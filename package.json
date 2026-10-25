@@ -1,0 +1,18 @@
+{
+  "name": "voxel-cricket",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Voxel cricket game - offline-first, mobile, batting mechanics first",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node tools/test.mjs",
+    "check": "npm run test && npm run build && node tools/check-offline.mjs"
+  },
+  "devDependencies": {
+    "@babylonjs/core": "^9.32.0",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}
