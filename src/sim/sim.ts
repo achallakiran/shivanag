@@ -1,10 +1,14 @@
 import type { GameConfig } from '../config/defaults';
 import type { InputFrame } from '../input/types';
 import { InputReplayer, type Recording } from '../input/recorder';
+import { createBall, stepBall, type BallState } from './ball';
+import { createMachine, stepMachine, type MachineState } from './machine';
 
 // Phase 0 toy simulation. Its job is to prove that recorded input replays to
 // exactly the same state. It uses only + - * / and min/max/hypot-free math so
 // the result does not depend on a platform's trig functions.
+type ToyCfg = GameConfig['toy'];
+
 export interface SimState {
   tick: number;
   px: number; // player position: x sideways, pz along the pitch
@@ -18,13 +22,21 @@ export interface SimState {
   ppz: number;
   pbx: number;
   pby: number;
+  ball: BallState;
+  machine: MachineState;
+}
+
+// Everything the sim reads from the config, so a replay can be given the same values.
+export interface SimCfg {
+  toy: ToyCfg;
+  ball: GameConfig['ball'];
+  machine: GameConfig['machine'];
+  rightHanded: boolean;
 }
 
 export function createSimState(): SimState {
-  return { tick: 0, px: 0, pz: 0, vx: 0, vz: 0, bx: 0, by: 0, ppx: 0, ppz: 0, pbx: 0, pby: 0 };
+  return { tick: 0, px: 0, pz: 0, vx: 0, vz: 0, bx: 0, by: 0, ppx: 0, ppz: 0, pbx: 0, pby: 0, ball: createBall(), machine: createMachine() };
 }
-
-type ToyCfg = GameConfig['toy'];
 
 const approach = (cur: number, target: number, maxDelta: number) => {
   const d = target - cur;
@@ -35,7 +47,8 @@ const approach = (cur: number, target: number, maxDelta: number) => {
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
-export function stepSim(s: SimState, f: InputFrame, dt: number, c: ToyCfg): void {
+export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): void {
+  const c = cfg.toy;
   s.ppx = s.px;
   s.ppz = s.pz;
   s.pbx = s.bx;
@@ -53,19 +66,20 @@ export function stepSim(s: SimState, f: InputFrame, dt: number, c: ToyCfg): void
   s.bx += (f.rx * c.batReach - s.bx) * k;
   s.by += (f.ry * c.batReach - s.by) * k;
 
+  stepMachine(s.machine, s.ball, cfg.machine, cfg.ball, dt, cfg.rightHanded);
+  stepBall(s.ball, cfg.ball, dt);
+
   s.tick++;
 }
 
 // FNV-1a over the bytes of the core state. Same inputs give the same string.
 export function hashSim(s: SimState): string {
-  const buf = new DataView(new ArrayBuffer(8 * 6 + 4));
-  buf.setFloat64(0, s.px, true);
-  buf.setFloat64(8, s.pz, true);
-  buf.setFloat64(16, s.vx, true);
-  buf.setFloat64(24, s.vz, true);
-  buf.setFloat64(32, s.bx, true);
-  buf.setFloat64(40, s.by, true);
-  buf.setUint32(48, s.tick, true);
+  const b = s.ball;
+  const m = s.machine;
+  const nums = [s.px, s.pz, s.vx, s.vz, s.bx, s.by, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length];
+  const buf = new DataView(new ArrayBuffer(8 * nums.length + 4));
+  nums.forEach((v, i) => buf.setFloat64(i * 8, v, true));
+  buf.setUint32(8 * nums.length, s.tick, true);
   let h = 0x811c9dc5;
   for (let i = 0; i < buf.byteLength; i++) {
     h ^= buf.getUint8(i);
@@ -75,10 +89,10 @@ export function hashSim(s: SimState): string {
 }
 
 // Re-runs a recording from a fresh state for `ticks` steps and returns the final state.
-export function replayRecording(rec: Recording, toy: ToyCfg, ticks: number): SimState {
+export function replayRecording(rec: Recording, cfg: SimCfg, ticks: number): SimState {
   const s = createSimState();
   const player = new InputReplayer(rec);
   const dt = 1 / rec.stepHz;
-  for (let t = 0; t < ticks; t++) stepSim(s, player.frameAt(t), dt, toy);
+  for (let t = 0; t < ticks; t++) stepSim(s, player.frameAt(t), dt, cfg);
   return s;
 }

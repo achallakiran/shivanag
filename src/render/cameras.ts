@@ -9,7 +9,7 @@ export interface CamSpec {
   pos: Vec;
   target: Vec;
   fov: number; // vertical, radians
-  follow?: 'head'; // first person: the position is the batter's head plus pos
+  follow?: 'head' | 'ball'; // head: first person; ball: chase the ball in flight (falls back to the broadcast view)
 }
 
 const CREASE_Z = -20.12 / 2 + 1.22;
@@ -22,5 +22,6 @@ export const CAMERAS: CamSpec[] = [
   { id: 'behind', label: 'Behind batter', pos: [0.1, 2.0, CREASE_Z - 4.5], target: [0, 1.0, CREASE_Z + 6], fov: 0.65 },
   { id: 'shoulder', label: 'Over the shoulder', pos: [1.0, 1.9, CREASE_Z - 1.6], target: [0, 0.8, CREASE_Z + 8], fov: 0.7 },
   { id: 'side', label: 'Side-on', pos: [-8, 1.5, CREASE_Z], target: [0.4, 1.0, CREASE_Z], fov: 0.5 },
+  { id: 'ball', label: 'Ball follow', pos: [0, 1.8, 0], target: [0.3, 0.95, CREASE_Z], fov: 0.5, follow: 'ball' },
   { id: 'first', label: 'First person', pos: [0.0, 0.0, 0.0], target: [0, 0.9, CREASE_Z + 12], fov: 1.0, follow: 'head' },
 ];

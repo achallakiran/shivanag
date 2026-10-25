@@ -54,6 +54,15 @@ export class Overlay {
     'display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 52px);padding:6px 12px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font:600 14px -apple-system,system-ui,sans-serif;white-space:nowrap;',
   );
   private toastTimer: ReturnType<typeof setTimeout> | undefined;
+  private cue = h(
+    'div',
+    'position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 8px);padding:5px 14px;border-radius:14px;background:rgba(0,0,0,.5);color:#fff;font:700 14px -apple-system,system-ui,sans-serif;letter-spacing:.04em;white-space:nowrap;',
+    'READY',
+  );
+  private info = h(
+    'div',
+    'position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:12px ui-monospace,Menlo,monospace;white-space:pre;text-align:center;',
+  );
   private fileInput = h('input');
   private result = h('div', 'margin:6px 0;color:#f2d27a;white-space:pre-wrap;min-height:1.4em;');
   private open = false;
@@ -80,7 +89,7 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
+    root.append(this.hud, this.cue, this.info, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };
@@ -94,6 +103,16 @@ export class Overlay {
   }
   private knob(): HTMLDivElement {
     return h('div', 'display:none;position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.5);');
+  }
+
+  setCue(text: string, color: string): void {
+    if (this.cue.textContent !== text) this.cue.textContent = text;
+    this.cue.style.background = color;
+  }
+
+  setInfo(text: string): void {
+    if (this.info.textContent !== text) this.info.textContent = text;
+    this.info.style.display = text ? 'block' : 'none';
   }
 
   setHud(text: string, visible: boolean): void {

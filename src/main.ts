@@ -12,7 +12,9 @@ import {
 } from './config/config';
 import { DualSticks } from './input/sticks';
 import { InputRecorder } from './input/recorder';
-import { createSimState, hashSim, replayRecording, stepSim } from './sim/sim';
+import { createSimState, hashSim, replayRecording, stepSim, type SimCfg } from './sim/sim';
+import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
+import { Sound } from './ui/sound';
 import { createWorld } from './render/world';
 import { Overlay } from './ui/overlay';
 import { downloadText } from './ui/download';
@@ -68,7 +70,7 @@ async function main(): Promise<void> {
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
 
-  const world = createWorld(engine, cfg.body);
+  const world = createWorld(engine, cfg);
   // View options (camera, skeleton overlay, handedness) are remembered between sessions.
   const saveView = () => store.set('view', JSON.stringify(world.view()));
   try {
@@ -81,6 +83,10 @@ async function main(): Promise<void> {
   } catch {
     /* bad saved value: keep defaults */
   }
+  const simCfg: SimCfg = { toy: cfg.toy, ball: cfg.ball, machine: cfg.machine, rightHanded: world.view().rightHanded };
+  const sound = new Sound();
+  const unlock = () => sound.unlock();
+  window.addEventListener('pointerdown', unlock, { passive: true });
   const sticks = new DualSticks(canvas, () => cfg.input);
   const recorder = new InputRecorder(cfg.sim.stepHz);
   const sim = createSimState();
@@ -106,7 +112,7 @@ async function main(): Promise<void> {
       if (recorder.truncated) return 'Input log hit its size cap, so replay cannot be verified.';
       const ticks = loop.tick;
       const live = hashSim(sim);
-      const replayed = hashSim(replayRecording(recorder.toRecording(), cfg.toy, ticks));
+      const replayed = hashSim(replayRecording(recorder.toRecording(), simCfg, ticks));
       return replayed === live
         ? `Replay matches: ${ticks} steps, state ${live}`
         : `MISMATCH after ${ticks} steps: live ${live}, replay ${replayed}`;
@@ -152,10 +158,12 @@ async function main(): Promise<void> {
       return on ? 'Skeleton shown' : 'Skeleton hidden';
     },
     toggleHanded() {
+      // The machine's line depends on handedness, so a change restarts the session cleanly.
       const rh = !world.view().rightHanded;
       world.setView({ rightHanded: rh });
       saveView();
-      return rh ? 'Right-handed' : 'Left-handed';
+      reload();
+      return rh ? 'Right-handed. Reloading...' : 'Left-handed. Reloading...';
     },
     setSetting(path, value) {
       cfg = mergeConfig(cfg, patchFromPath(path, value));
@@ -179,17 +187,38 @@ async function main(): Promise<void> {
   }
 
   let hudAt = 0;
+  let lastPhase = -1;
+  let lastBounces = 0;
   const loop: FixedLoop = new FixedLoop({
     stepHz: cfg.sim.stepHz,
     maxStepsPerFrame: cfg.sim.maxStepsPerFrame,
     step: (tick, dt) => {
       const f = sticks.sample();
       recorder.push(tick, f);
-      stepSim(sim, f, dt, cfg.toy);
+      stepSim(sim, f, dt, simCfg);
     },
     render: (alpha) => {
       world.update(sim, alpha);
       world.scene.render();
+      const m = sim.machine;
+      if (m.phase !== lastPhase) {
+        if (m.phase === PHASE_CUE) sound.beep(660, 0.12);
+        if (m.phase === PHASE_FLIGHT) sound.beep(180, 0.09, 0.25, 'square');
+        lastPhase = m.phase;
+      }
+      if (sim.ball.bounces !== lastBounces) {
+        if (sim.ball.bounces > lastBounces) sound.beep(110, 0.07, 0.2, 'triangle');
+        lastBounces = sim.ball.bounces;
+      }
+      if (m.phase === PHASE_CUE) overlay.setCue('BALL COMING', 'rgba(200,120,0,.85)');
+      else if (m.phase === PHASE_FLIGHT && sim.ball.active) overlay.setCue('IN FLIGHT', 'rgba(150,30,30,.85)');
+      else overlay.setCue('READY', 'rgba(0,0,0,.5)');
+      const bl = sim.ball;
+      if (m.count > 0) {
+        const pitched = bl.bounces > 0 ? `${(bl.bz + 10.06).toFixed(1)} m` : '-';
+        const atBat = bl.crossed ? `  at crease: ${(bl.crossSpeed * 3.6).toFixed(0)} km/h, height ${bl.crossY.toFixed(2)} m` : '';
+        overlay.setInfo(`Ball ${m.count}: ${m.speedKmh.toFixed(0)} km/h, pitched ${pitched} from stumps${atBat}`);
+      }
       const v = sticks.visual();
       overlay.setSticks(v.left, v.right);
       const now = performance.now();

@@ -10,7 +10,7 @@ import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createWorld } from '../src/render/world';
 import { CAMERAS } from '../src/render/cameras';
-import { createSimState } from '../src/sim/sim';
+import { createSimState, stepSim } from '../src/sim/sim';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 
 const W = 1280;
@@ -153,7 +153,7 @@ function render(world: ReturnType<typeof createWorld>, engine: NullEngine): Shot
 const outDir = process.argv[2] ?? 'preview';
 mkdirSync(outDir, { recursive: true });
 const engine = new NullEngine({ renderWidth: W, renderHeight: H, textureSize: 512, deterministicLockstep: false, lockstepMaxSteps: 1 });
-const world = createWorld(engine, DEFAULT_CONFIG.body);
+const world = createWorld(engine, DEFAULT_CONFIG);
 const s = createSimState();
 const poses: [string, number, number][] = [['rest', 0, 0], ['swing', 0.9, 0.3]];
 const summary: string[] = [];
@@ -171,6 +171,30 @@ for (const [pname, bx, by] of poses) {
       writeFileSync(`${outDir}/${name}.png`, png(shot.rgb, W, H));
       summary.push(`${name}: batter is ${(shot.headFrac * 100).toFixed(0)}% of image height`);
     });
+  }
+}
+// A delivery in flight: broadcast and ball-follow cameras at a few moments after release.
+{
+  const sim = createSimState();
+  const cfg = { toy: DEFAULT_CONFIG.toy, ball: DEFAULT_CONFIG.ball, machine: { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 }, rightHanded: true };
+  world.setView({ camera: 0, rightHanded: true, skeleton: false });
+  const marks = [0.12, 0.3, 0.45, 0.6, 0.9];
+  let next = 0;
+  const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
+  for (let t = 0; t < 240 * 8 && next < marks.length; t++) {
+    stepSim(sim, { lx: 0, ly: 0, la: 0, rx: 0, ry: 0, ra: 0 }, dt, cfg);
+    world.update(sim, 1);
+    if (sim.ball.active && sim.ball.age >= marks[next]!) {
+      for (const cam of [0, 6]) {
+        world.setView({ camera: cam });
+        world.update(sim, 1);
+        const shot = render(world, engine);
+        writeFileSync(`${outDir}/ball-${next}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
+      }
+      world.setView({ camera: 0 });
+      summary.push(`ball frame ${next}: age ${sim.ball.age.toFixed(2)} s, z ${sim.ball.z.toFixed(2)}, y ${sim.ball.y.toFixed(2)}`);
+      next++;
+    }
   }
 }
 console.log(summary.join('\n'));

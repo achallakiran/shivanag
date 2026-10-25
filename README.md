@@ -10,12 +10,12 @@ Hard requirements:
 
 ## Status
 
-**v0.2.0, Phase 0.2 (visible batter).** Fixed-step loop, tunable config, two-thumb input,
-input recorder with replay verification, offline install, version/update prompt.
-A voxel batter with a visible joint skeleton stands at the crease, seen from a behind-the-bowler
-broadcast camera. Left stick moves the body, right stick moves the bat (placeholder pose, not the
-final joint-driven model). Buttons: Camera (7 views), Skeleton, and Menu (left/right-handed).
-`node tools/preview.mjs` renders every camera headless to PNG for a quick visual check.
+**v0.3.0, Phase A (ball and bowling machine).** A bowling machine at the bowler's end delivers a ball
+every few seconds: a cue warning, then release. The ball has real size and mass-free physics (gravity,
+air drag, spin force, bounce with grip and slip, rolling). It is drawn larger with a trail, shadow and a
+bounce marker. Speed, line and length are in Menu tuning (`machine.*`). The batter is still a placeholder
+pose and cannot hit the ball yet; stances and the circle swing come next.
+`node tools/preview.mjs` renders every camera and a delivery headless to PNG for a quick visual check.
 
 ## Play / install (iPhone)
 

@@ -13,9 +13,9 @@ import type { GameConfig } from '../config/defaults';
 import { JOINTS, JOINT_NAMES, bodyDims, facingVec, solvePose, type JointName, type Pose, type Vec } from '../sim/skeleton';
 import { CAMERAS } from './cameras';
 
-// Metres. The batting crease sits at z = BAT_Z; the bowler's end is at +z.
-export const PITCH_LEN = 20.12;
-export const BAT_Z = -PITCH_LEN / 2 + 1.22;
+import { BAT_Z, PITCH_LEN } from '../sim/field';
+import { PHASE_CUE, RELEASE_Y, RELEASE_Z } from '../sim/machine';
+export { BAT_Z, PITCH_LEN };
 
 export interface ViewState {
   camera: number; // index into CAMERAS
@@ -84,7 +84,8 @@ interface Part {
   place(p: Pose, f: Vec, k: number): void;
 }
 
-export function createWorld(engine: AbstractEngine, body: GameConfig['body']): World {
+export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body' | 'ball'>): World {
+  const body = cfg.body;
   const scene = new Scene(engine);
   scene.clearColor = new Color4(0.55, 0.75, 0.95, 1);
   scene.skipPointerMovePicking = true;
@@ -196,6 +197,45 @@ export function createWorld(engine: AbstractEngine, body: GameConfig['body']): W
     }
   }
 
+  // Bowling machine, ball, its shadow, bounce marker and a short trail. Visual scale only; the sim keeps the real radius.
+  const ballMat = mat(scene, 'ball', 0.85, 0.08, 0.08);
+  const shadowMat = mat(scene, 'shadow', 0, 0, 0);
+  shadowMat.unfreeze();
+  shadowMat.alpha = 0.35;
+  shadowMat.freeze();
+  const trailMat = mat(scene, 'trail', 1, 0.9, 0.85, true);
+  const markMat = mat(scene, 'mark', 1, 0.35, 0.1, true);
+  const machineBody = box(scene, 'machine', 0.5, 0.9, 0.5, 0, 0.45, RELEASE_Z + 0.6, dark);
+  const machineLight = CreateSphere('machineLight', { diameter: 0.22, segments: 8 }, scene);
+  machineLight.position.set(0, RELEASE_Y - 0.3, RELEASE_Z + 0.2);
+  const lightOff = mat(scene, 'lightOff', 0.3, 0.3, 0.3, true);
+  const lightCue = mat(scene, 'lightCue', 1, 0.75, 0.1, true);
+  machineLight.material = lightOff;
+  void machineBody;
+  const ballSize = cfg.ball.radius * 2 * cfg.ball.visualScale;
+  const ballMesh = CreateSphere('ball', { diameter: ballSize, segments: 10 }, scene);
+  ballMesh.material = ballMat;
+  ballMesh.setEnabled(false);
+  const shadow = CreateSphere('ballShadow', { diameter: ballSize * 1.1, segments: 8 }, scene);
+  shadow.material = shadowMat;
+  shadow.scaling.y = 0.05;
+  shadow.setEnabled(false);
+  const mark = CreateSphere('bounceMark', { diameter: 0.28, segments: 8 }, scene);
+  mark.material = markMat;
+  mark.scaling.y = 0.05;
+  mark.setEnabled(false);
+  const TRAIL = 48;
+  const trailMeshes: Mesh[] = [];
+  for (let i = 0; i < TRAIL; i++) {
+    const t = CreateSphere(`trail${i}`, { diameter: ballSize * 0.45, segments: 4 }, scene);
+    t.material = trailMat;
+    t.setEnabled(false);
+    trailMeshes.push(t);
+  }
+  const trail: Vec[] = [];
+  let trailTick = -1;
+  let lastCount = -1;
+
   let state: ViewState = { camera: 0, skeleton: true, rightHanded: true };
   let lastPose: Pose = solvePose({ px: 0, pz: 0, bx: 0, by: 0, rightHanded: true, baseZ: BAT_Z }, body);
   const setSkeletonVisible = (on: boolean) => {
@@ -219,14 +259,51 @@ export function createWorld(engine: AbstractEngine, body: GameConfig['body']): W
       for (const n of JOINT_NAMES) joints.get(n)!.position.copyFrom(toWorld(pose[n]));
       for (const b of bones) span(b.mesh, pose[b.a], pose[b.b], 0.018, 0.018, [0, 0, 1]);
     }
+    // ball
+    const bl = s.ball;
+    const bpos: Vec = [bl.px + (bl.x - bl.px) * alpha, bl.py + (bl.y - bl.py) * alpha, bl.pz + (bl.z - bl.pz) * alpha];
+    if (s.machine.count !== lastCount) {
+      lastCount = s.machine.count;
+      trail.length = 0;
+    }
+    if (bl.active && s.tick % 3 === 0 && trailTick !== s.tick) {
+      trailTick = s.tick;
+      trail.push(bpos);
+      if (trail.length > TRAIL) trail.shift();
+    }
+    ballMesh.setEnabled(!!bl.active);
+    shadow.setEnabled(!!bl.active);
+    if (bl.active) {
+      ballMesh.position.copyFrom(toWorld(bpos));
+      shadow.position.copyFrom(toWorld([bpos[0], 0.03, bpos[2]]));
+    }
+    mark.setEnabled(bl.bounces > 0);
+    if (bl.bounces > 0) mark.position.copyFrom(toWorld([bl.bx, 0.03, bl.bz]));
+    for (let i = 0; i < TRAIL; i++) {
+      const p = trail[i];
+      trailMeshes[i]!.setEnabled(!!p);
+      if (p) {
+        trailMeshes[i]!.position.copyFrom(toWorld(p));
+        const k = 0.35 + 0.65 * ((i + TRAIL - trail.length) / TRAIL);
+        trailMeshes[i]!.scaling.setAll(k);
+      }
+    }
+    machineLight.material = s.machine.phase === PHASE_CUE ? lightCue : lightOff;
     // camera (mirrored for left-handers)
     const spec = CAMERAS[state.camera]!;
     const mx = rh ? 1 : -1;
-    const pos: Vec = spec.follow === 'head' ? [pose.head[0] + spec.pos[0], pose.head[1] + spec.pos[1], pose.head[2] + 0.25] : [spec.pos[0] * mx, spec.pos[1], spec.pos[2]];
-    const tgt: Vec = [spec.target[0] * mx, spec.target[1], spec.target[2]];
+    if (spec.follow === 'ball' && bl.active) {
+      cam.position.copyFrom(toWorld([bpos[0] * 0.5, 1.8, Math.min(bpos[2] + 4.5, 12)]));
+      cam.setTarget(toWorld(bpos));
+      cam.fov = spec.fov;
+      return;
+    }
+    const base = spec.follow === 'ball' ? CAMERAS[0]! : spec;
+    const pos: Vec = spec.follow === 'head' ? [pose.head[0] + spec.pos[0], pose.head[1] + spec.pos[1], pose.head[2] + 0.25] : [base.pos[0] * mx, base.pos[1], base.pos[2]];
+    const tgt: Vec = [base.target[0] * mx, base.target[1], base.target[2]];
     cam.position.copyFrom(toWorld(pos));
     cam.setTarget(toWorld(tgt));
-    cam.fov = spec.fov;
+    cam.fov = base.fov;
   };
 
   return {
