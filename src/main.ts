@@ -15,6 +15,7 @@ import { InputRecorder } from './input/recorder';
 import { createSimState, hashSim, replayRecording, stepSim, type SimCfg } from './sim/sim';
 import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
 import { Sound } from './ui/sound';
+import { STANCE_NAMES } from './sim/stance';
 import { createWorld } from './render/world';
 import { Overlay } from './ui/overlay';
 import { downloadText } from './ui/download';
@@ -83,13 +84,13 @@ async function main(): Promise<void> {
   } catch {
     /* bad saved value: keep defaults */
   }
-  const simCfg: SimCfg = { toy: cfg.toy, ball: cfg.ball, machine: cfg.machine, rightHanded: world.view().rightHanded };
+  const simCfg: SimCfg = { toy: cfg.toy, stance: cfg.stance, ball: cfg.ball, machine: cfg.machine, rightHanded: world.view().rightHanded };
   const sound = new Sound();
   const unlock = () => sound.unlock();
   window.addEventListener('pointerdown', unlock, { passive: true });
   const sticks = new DualSticks(canvas, () => cfg.input);
   const recorder = new InputRecorder(cfg.sim.stepHz);
-  const sim = createSimState();
+  const sim = createSimState(cfg.stance, simCfg.rightHanded);
 
   let persisted = 'unknown';
   try {
@@ -221,12 +222,13 @@ async function main(): Promise<void> {
       }
       const v = sticks.visual();
       overlay.setSticks(v.left, v.right);
+      overlay.setGates(v.left, sim.stance.gate, STANCE_NAMES[sim.stance.gate]!, cfg.stance.gateRest);
       const now = performance.now();
       if (now - hudAt > 120) {
         hudAt = now;
         const online = navigator.onLine ? 'online' : 'offline';
         overlay.setHud(
-          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nsim (${sim.px.toFixed(2)}, ${sim.pz.toFixed(2)}) bat (${sim.bx.toFixed(2)}, ${sim.by.toFixed(2)})\nstate ${hashSim(sim)}`,
+          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat (${sim.bx.toFixed(2)}, ${sim.by.toFixed(2)})\nstate ${hashSim(sim)}`,
           cfg.debug.hud,
         );
       }

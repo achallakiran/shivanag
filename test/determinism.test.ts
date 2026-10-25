@@ -8,7 +8,7 @@ import { createSimState, hashSim, replayRecording, stepSim } from '../src/sim/si
 
 const cfg = DEFAULT_CONFIG;
 const dt = 1 / cfg.sim.stepHz;
-const simCfg = { toy: cfg.toy, ball: cfg.ball, machine: cfg.machine, rightHanded: true };
+const simCfg = { toy: cfg.toy, stance: cfg.stance, ball: cfg.ball, machine: cfg.machine, rightHanded: true };
 
 // A made-up thumb session: sticks held for random stretches, then released.
 function session(seed: number, ticks: number): InputFrame[] {
@@ -82,15 +82,6 @@ test('recorder flags truncation when over its cap', () => {
   for (let t = 0; t < 10; t++) rec.push(t, { lx: t, ly: 0, la: 1, rx: 0, ry: 0, ra: 0 });
   assert.equal(rec.truncated, true);
   assert.equal(rec.toRecording().frames.length, 3);
-});
-
-test('body has momentum: velocity cannot jump', () => {
-  const s = createSimState();
-  stepSim(s, { lx: 1, ly: 0, la: 1, rx: 0, ry: 0, ra: 0 }, dt, simCfg);
-  assert.ok(s.vx > 0 && s.vx <= cfg.toy.footAccel * dt + 1e-12);
-  // after a full second of stick-left, speed is capped
-  for (let i = 0; i < 240; i++) stepSim(s, { lx: -1, ly: 0, la: 1, rx: 0, ry: 0, ra: 0 }, dt, simCfg);
-  assert.ok(Math.abs(s.vx) <= cfg.toy.footMaxSpeed + 1e-9);
 });
 
 test('rng is repeatable', () => {

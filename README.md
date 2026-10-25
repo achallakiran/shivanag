@@ -10,12 +10,13 @@ Hard requirements:
 
 ## Status
 
-**v0.3.1, Phase A (ball and bowling machine).** A bowling machine at the bowler's end delivers a ball
-every few seconds: a cue warning, then release. The ball has real size and mass-free physics (gravity,
-air drag, spin force, bounce with grip and slip, rolling). It is drawn larger with a trail, shadow and a
-bounce marker. Speed, line and length are in Menu tuning (`machine.*`). The batter is still a placeholder
-pose and cannot hit the ball yet; stances and the circle swing come next.
-`node tools/preview.mjs` renders every camera and a delivery headless to PNG for a quick visual check.
+**v0.4.0, Phase B (stances).** The left stick is now a gear selector, not free movement. With the thumb
+down: push up for Back foot; the middle is Ready; pull down for Sit (sweep), then Front foot, then Step out.
+Labels sit beside the stick. Release the thumb and the batter returns to Ready. Left/right on the stick slides
+the working foot across or out. The body moves to each stance at limited foot, hip and lean speeds (all in
+Menu tuning, `stance.*`), so choosing late means the feet have not arrived. The bat rests in the backlift;
+the right stick still moves it as a placeholder until the circle swing arrives. The bowling machine (v0.3)
+keeps delivering. `node tools/preview.mjs` renders every camera, every stance and a delivery to PNG.
 
 ## Play / install (iPhone)
 

@@ -11,6 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createWorld } from '../src/render/world';
 import { CAMERAS } from '../src/render/cameras';
 import { createSimState, stepSim } from '../src/sim/sim';
+import { STANCE_NAMES, clonePose, targetPose } from '../src/sim/stance';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 
 const W = 1280;
@@ -173,10 +174,24 @@ for (const [pname, bx, by] of poses) {
     });
   }
 }
+// Every stance, seen from the broadcast camera and from the side.
+for (let g = 0; g < 5; g++) {
+  const st = createSimState();
+  st.stance.pose = targetPose(g, 0, DEFAULT_CONFIG.stance, true);
+  st.stance.prev = clonePose(st.stance.pose);
+  for (const cam of [0, 6]) {
+    world.setView({ camera: cam, rightHanded: true, skeleton: true });
+    world.update(st, 1);
+    const shot = render(world, engine);
+    writeFileSync(`${outDir}/stance-${g}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
+  }
+  summary.push(`stance ${g} ${STANCE_NAMES[g]} rendered`);
+}
+
 // A delivery in flight: broadcast and ball-follow cameras at a few moments after release.
 {
   const sim = createSimState();
-  const cfg = { toy: DEFAULT_CONFIG.toy, ball: DEFAULT_CONFIG.ball, machine: { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 }, rightHanded: true };
+  const cfg = { toy: DEFAULT_CONFIG.toy, stance: DEFAULT_CONFIG.stance, ball: DEFAULT_CONFIG.ball, machine: { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 }, rightHanded: true };
   world.setView({ camera: 0, rightHanded: true, skeleton: false });
   const marks = [0.12, 0.3, 0.45, 0.6, 0.9];
   let next = 0;

@@ -12,6 +12,8 @@ import type { SimState } from '../sim/sim';
 import type { GameConfig } from '../config/defaults';
 import { JOINTS, JOINT_NAMES, bodyDims, facingVec, solvePose, type JointName, type Pose, type Vec } from '../sim/skeleton';
 import { CAMERAS } from './cameras';
+import { DEFAULT_CONFIG } from '../config/defaults';
+import { createStance, lerpPose } from '../sim/stance';
 
 import { BAT_Z, PITCH_LEN } from '../sim/field';
 import { PHASE_CUE, RELEASE_Y, RELEASE_Z } from '../sim/machine';
@@ -237,7 +239,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   let lastCount = -1;
 
   let state: ViewState = { camera: 0, skeleton: true, rightHanded: true };
-  let lastPose: Pose = solvePose({ px: 0, pz: 0, bx: 0, by: 0, rightHanded: true, baseZ: BAT_Z }, body);
+  let lastPose: Pose = solvePose({ stance: createStance(DEFAULT_CONFIG.stance, true).pose, bx: 0, by: 0, rightHanded: true, baseZ: BAT_Z }, body);
   const setSkeletonVisible = (on: boolean) => {
     for (const m of joints.values()) m.setEnabled(on);
     for (const b of bones) b.mesh.setEnabled(on);
@@ -246,13 +248,11 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   const D = bodyDims(body);
 
   const place = (s: SimState, alpha: number) => {
-    const px = s.ppx + (s.px - s.ppx) * alpha;
-    const pz = s.ppz + (s.pz - s.ppz) * alpha;
     const bx = s.pbx + (s.bx - s.pbx) * alpha;
     const by = s.pby + (s.by - s.pby) * alpha;
     const rh = state.rightHanded;
     const f = facingVec(rh, body.open);
-    const pose = solvePose({ px, pz, bx, by, rightHanded: rh, baseZ: BAT_Z }, body);
+    const pose = solvePose({ stance: lerpPose(s.stance.prev, s.stance.pose, alpha), bx, by, rightHanded: rh, baseZ: BAT_Z }, body);
     lastPose = pose;
     for (const p of parts) p.place(pose, f, D.scale);
     if (state.skeleton) {

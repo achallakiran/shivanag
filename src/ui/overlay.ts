@@ -63,6 +63,14 @@ export class Overlay {
     'div',
     'position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:12px ui-monospace,Menlo,monospace;white-space:pre;text-align:center;',
   );
+  private gatePills = ['BACK', 'SIT', 'FRONT', 'STEP'].map((t) =>
+    h('div', 'display:none;position:absolute;left:0;top:0;padding:0 8px;border-radius:9px;font:700 11px -apple-system,system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.35);white-space:nowrap;box-sizing:border-box;', t),
+  );
+  private stanceLabel = h(
+    'div',
+    'position:absolute;left:calc(env(safe-area-inset-left) + 10px);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:3px 9px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:600 13px -apple-system,system-ui,sans-serif;',
+    'Ready',
+  );
   private fileInput = h('input');
   private result = h('div', 'margin:6px 0;color:#f2d27a;white-space:pre-wrap;min-height:1.4em;');
   private open = false;
@@ -89,7 +97,7 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.cue, this.info, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
+    root.append(this.hud, this.cue, this.info, this.stanceLabel, ...this.gatePills, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };
@@ -118,6 +126,27 @@ export class Overlay {
   setHud(text: string, visible: boolean): void {
     this.hud.style.display = visible ? 'block' : 'none';
     if (visible) this.hud.textContent = text;
+  }
+
+  // Gate labels beside the left stick: BACK above the centre, then SIT, FRONT, STEP down the travel.
+  // `gate` is the stance index (0 back, 1 ready, 2 sit, 3 front, 4 step); `rest` is the stance.gateRest zone.
+  setGates(v: StickVisual, gate: number, name: string, rest: number): void {
+    if (this.stanceLabel.textContent !== name) this.stanceLabel.textContent = name;
+    const w = (1 - rest) / 3;
+    // centre of each pill, in units of the stick radius, positive down
+    const centres = [-(rest + 0.3), rest + w * 0.5, rest + w * 1.5, rest + w * 2.5];
+    const selected = [0, -1, 1, 2, 3][gate]!; // pill index lit for each stance, -1 for ready
+    this.gatePills.forEach((p, i) => {
+      p.style.display = v.active ? 'block' : 'none';
+      if (!v.active) return;
+      const hgt = Math.max(16, Math.min(w * v.radius - 3, 26));
+      p.style.height = `${hgt}px`;
+      p.style.lineHeight = `${hgt - 2}px`;
+      p.style.transform = `translate(${v.ox + v.radius + 8}px,${v.oy + centres[i]! * v.radius - hgt / 2}px)`;
+      const on = i === selected;
+      p.style.background = on ? 'rgba(242,210,122,.95)' : 'rgba(0,0,0,.4)';
+      p.style.color = on ? '#222' : '#fff';
+    });
   }
 
   setSticks(l: StickVisual, r: StickVisual): void {

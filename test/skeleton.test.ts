@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
+import { BACK, FRONT, READY, SIT, STEP, createStance, targetPose } from '../src/sim/stance';
 import { JOINTS, JOINT_NAMES, bodyDims, dist, solvePose, twoBone, type PoseInput } from '../src/sim/skeleton';
 
-const base: PoseInput = { px: 0, pz: 0, bx: 0, by: 0, rightHanded: true, baseZ: -8.84 };
+const stanceOf = (g: number, rh = true) => targetPose(g, 0, DEFAULT_CONFIG.stance, rh);
+const base: PoseInput = { stance: createStance(DEFAULT_CONFIG.stance, true).pose, bx: 0, by: 0, rightHanded: true, baseZ: -8.84 };
 const body = DEFAULT_CONFIG.body;
 const D = bodyDims(body);
 
@@ -25,7 +27,7 @@ test('two-bone IK keeps bone lengths, even when the target is out of reach', () 
 
 test('stance: feet on the ground, head about 1.7 m up, limbs keep their lengths', () => {
   for (const rh of [true, false]) {
-    const p = solvePose({ ...base, rightHanded: rh }, body);
+    const p = solvePose({ ...base, stance: stanceOf(READY, rh), rightHanded: rh }, body);
     assert.ok(Math.abs(p.ankleL[1] - D.ankle) < 1e-9 && Math.abs(p.ankleR[1] - D.ankle) < 1e-9);
     assert.ok(p.head[1] > 1.45 && p.head[1] < 1.8, `head ${p.head[1]}`);
     assert.ok(Math.abs(dist(p.hipL, p.kneeL) - D.thigh) < 1e-6);
@@ -38,7 +40,7 @@ test('stance: feet on the ground, head about 1.7 m up, limbs keep their lengths'
 
 test('left-hander is the mirror image of the right-hander', () => {
   const a = solvePose(base, body);
-  const b = solvePose({ ...base, rightHanded: false }, body);
+  const b = solvePose({ ...base, stance: stanceOf(READY, false), rightHanded: false }, body);
   // Mirror about the pitch axis (X = 0). The left-hander's right side is the one toward the bowler,
   // so each paired joint matches the opposite-named joint of the right-hander.
   const swap = (n: string) => (n.endsWith('L') ? n.slice(0, -1) + 'R' : n.endsWith('R') ? n.slice(0, -1) + 'L' : n) as (typeof JOINT_NAMES)[number];
@@ -60,10 +62,26 @@ test('bat stick moves the bat, hands stay within reach of the shoulders', () => 
   }
 });
 
-test('moving the body moves every joint by the same amount', () => {
-  const a = solvePose(base, body);
-  const b = solvePose({ ...base, px: 1, pz: -0.5 }, body);
-  for (const n of JOINT_NAMES) {
-    assert.ok(Math.abs(b[n][0] - a[n][0] - 1) < 1e-9 && Math.abs(b[n][2] - a[n][2] + 0.5) < 1e-9, n);
+test('every stance keeps limb lengths, keeps both feet on or above the ground and the head above the hips', () => {
+  for (const rh of [true, false]) {
+    for (const g of [BACK, READY, SIT, FRONT, STEP]) {
+      const p = solvePose({ ...base, stance: stanceOf(g, rh), rightHanded: rh }, body);
+      assert.ok(Math.abs(dist(p.hipL, p.kneeL) - D.thigh) < 1e-6 && Math.abs(dist(p.kneeL, p.ankleL) - D.shin) < 1e-6, `left leg, gate ${g}`);
+      assert.ok(Math.abs(dist(p.hipR, p.kneeR) - D.thigh) < 1e-6 && Math.abs(dist(p.kneeR, p.ankleR) - D.shin) < 1e-6, `right leg, gate ${g}`);
+      assert.ok(p.ankleL[1] >= D.ankle - 1e-9 && p.ankleR[1] >= D.ankle - 1e-9);
+      assert.ok(p.head[1] > p.pelvis[1] + 0.5, `head above pelvis, gate ${g}`);
+      // the legs reach their feet without being pulled short
+      assert.ok(dist(p.hipL, p.ankleL) <= D.thigh + D.shin + 1e-6 && dist(p.hipR, p.ankleR) <= D.thigh + D.shin + 1e-6);
+    }
   }
+});
+
+test('stances differ the way cricketers expect', () => {
+  const at = (g: number) => solvePose({ ...base, stance: stanceOf(g), rightHanded: true }, body);
+  const ready = at(READY);
+  assert.ok(at(STEP).ankleL[2] > at(FRONT).ankleL[2] && at(FRONT).ankleL[2] > ready.ankleL[2], 'front foot goes further forward');
+  assert.ok(at(BACK).ankleR[2] < ready.ankleR[2], 'back foot goes back');
+  assert.ok(at(SIT).pelvis[1] < ready.pelvis[1] - 0.25, 'sit is low');
+  assert.ok(at(STEP).pelvis[1] <= ready.pelvis[1]);
+  assert.ok(at(BACK).head[1] > at(FRONT).head[1] - 0.05, 'back foot is more upright');
 });

@@ -1,7 +1,8 @@
-import type { GameConfig } from '../config/defaults';
+import { DEFAULT_CONFIG, type GameConfig } from '../config/defaults';
 import type { InputFrame } from '../input/types';
 import { InputReplayer, type Recording } from '../input/recorder';
 import { createBall, stepBall, type BallState } from './ball';
+import { createStance, stepStance, type StanceState } from './stance';
 import { createMachine, stepMachine, type MachineState } from './machine';
 
 // Phase 0 toy simulation. Its job is to prove that recorded input replays to
@@ -11,17 +12,11 @@ type ToyCfg = GameConfig['toy'];
 
 export interface SimState {
   tick: number;
-  px: number; // player position: x sideways, pz along the pitch
-  pz: number;
-  vx: number;
-  vz: number;
-  bx: number; // bat offset from the left-stick body
+  bx: number; // bat offset from the right stick (placeholder until the circle swing)
   by: number;
-  // previous values, for render interpolation only (not part of the hash)
-  ppx: number;
-  ppz: number;
-  pbx: number;
+  pbx: number; // previous values, for render interpolation only
   pby: number;
+  stance: StanceState;
   ball: BallState;
   machine: MachineState;
 }
@@ -29,37 +24,23 @@ export interface SimState {
 // Everything the sim reads from the config, so a replay can be given the same values.
 export interface SimCfg {
   toy: ToyCfg;
+  stance: GameConfig['stance'];
   ball: GameConfig['ball'];
   machine: GameConfig['machine'];
   rightHanded: boolean;
 }
 
-export function createSimState(): SimState {
-  return { tick: 0, px: 0, pz: 0, vx: 0, vz: 0, bx: 0, by: 0, ppx: 0, ppz: 0, pbx: 0, pby: 0, ball: createBall(), machine: createMachine() };
+export function createSimState(c: GameConfig['stance'] = DEFAULT_CONFIG.stance, rightHanded = true): SimState {
+  return { tick: 0, bx: 0, by: 0, pbx: 0, pby: 0, stance: createStance(c, rightHanded), ball: createBall(), machine: createMachine() };
 }
-
-const approach = (cur: number, target: number, maxDelta: number) => {
-  const d = target - cur;
-  if (d > maxDelta) return cur + maxDelta;
-  if (d < -maxDelta) return cur - maxDelta;
-  return target;
-};
-
-const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
 export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): void {
   const c = cfg.toy;
-  s.ppx = s.px;
-  s.ppz = s.pz;
   s.pbx = s.bx;
   s.pby = s.by;
 
-  // Left stick: feet. Speed is capped and acceleration is limited, so the body has momentum.
-  const maxDv = c.footAccel * dt;
-  s.vx = approach(s.vx, f.lx * c.footMaxSpeed, maxDv);
-  s.vz = approach(s.vz, f.ly * c.footMaxSpeed, maxDv);
-  s.px = clamp(s.px + s.vx * dt, -3, 3);
-  s.pz = clamp(s.pz + s.vz * dt, -2, 2);
+  // Left stick: stance gear selector. The body moves to the chosen stance at limited speeds.
+  stepStance(s.stance, f.ly, f.lx, f.la, dt, cfg.stance, cfg.rightHanded);
 
   // Right stick: bat. First-order follow toward the stick position.
   const k = Math.min(1, c.batResponse * dt);
@@ -76,7 +57,8 @@ export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): vo
 export function hashSim(s: SimState): string {
   const b = s.ball;
   const m = s.machine;
-  const nums = [s.px, s.pz, s.vx, s.vz, s.bx, s.by, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length];
+  const p = s.stance.pose;
+  const nums = [s.bx, s.by, s.stance.gate, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length];
   const buf = new DataView(new ArrayBuffer(8 * nums.length + 4));
   nums.forEach((v, i) => buf.setFloat64(i * 8, v, true));
   buf.setUint32(8 * nums.length, s.tick, true);
@@ -90,7 +72,7 @@ export function hashSim(s: SimState): string {
 
 // Re-runs a recording from a fresh state for `ticks` steps and returns the final state.
 export function replayRecording(rec: Recording, cfg: SimCfg, ticks: number): SimState {
-  const s = createSimState();
+  const s = createSimState(cfg.stance, cfg.rightHanded);
   const player = new InputReplayer(rec);
   const dt = 1 / rec.stepHz;
   for (let t = 0; t < ticks; t++) stepSim(s, player.frameAt(t), dt, cfg);

@@ -45,13 +45,13 @@ test('merge does not mutate the base and ignores prototype tricks', () => {
 });
 
 test('patchFromPath builds a nested patch', () => {
-  const c = mergeConfig(DEFAULT_CONFIG, patchFromPath('toy.footMaxSpeed', 6));
-  assert.equal(c.toy.footMaxSpeed, 6);
-  assert.equal(c.toy.footAccel, DEFAULT_CONFIG.toy.footAccel);
+  const c = mergeConfig(DEFAULT_CONFIG, patchFromPath('stance.footSpeed', 6));
+  assert.equal(c.stance.footSpeed, 6);
+  assert.equal(c.stance.hipSpeed, DEFAULT_CONFIG.stance.hipSpeed);
 });
 
 test('export then import round-trips', () => {
-  const c = mergeConfig(DEFAULT_CONFIG, { input: { stickRadiusPx: 100 }, debug: { hud: false } });
+  const c = mergeConfig(DEFAULT_CONFIG, { input: { stickRadiusPx: 120 }, debug: { hud: false } });
   const back = importSettings(exportSettings(c));
   assert.deepEqual(back, c);
 });

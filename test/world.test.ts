@@ -14,7 +14,7 @@ test('scene builds and renders frames headless', () => {
   const world = createWorld(engine, DEFAULT_CONFIG);
   const s = createSimState();
   for (let i = 0; i < 30; i++) {
-    stepSim(s, { lx: 1, ly: 0.5, la: 1, rx: -0.5, ry: 1, ra: 1 }, 1 / 240, { toy: DEFAULT_CONFIG.toy, ball: DEFAULT_CONFIG.ball, machine: DEFAULT_CONFIG.machine, rightHanded: true });
+    stepSim(s, { lx: 1, ly: 0.5, la: 1, rx: -0.5, ry: 1, ra: 1 }, 1 / 240, { toy: DEFAULT_CONFIG.toy, stance: DEFAULT_CONFIG.stance, ball: DEFAULT_CONFIG.ball, machine: DEFAULT_CONFIG.machine, rightHanded: true });
     world.update(s, 0.5);
     world.scene.render();
   }
@@ -30,9 +30,8 @@ test('batter follows the sim and every camera and handedness renders', () => {
   const engine = new NullEngine();
   const world = createWorld(engine, DEFAULT_CONFIG);
   const s = createSimState();
-  s.px = s.ppx = 2;
   world.update(s, 1);
-  assert.ok(Math.abs(world.pose().pelvis[0] - 2.5) < 1e-9); // right-hander stands 0.5 m to the leg side
+  assert.ok(world.pose().pelvis[0] > 0.3 && world.pose().pelvis[0] < 0.7); // right-hander stands about 0.5 m to the leg side
   for (const rh of [true, false]) {
     for (let c = 0; c < 9; c++) {
       world.setView({ camera: c, rightHanded: rh, skeleton: c % 2 === 0 });
@@ -49,7 +48,7 @@ test('ball, shadow and bounce marker appear while a delivery is live', () => {
   const engine = new NullEngine();
   const world = createWorld(engine, DEFAULT_CONFIG);
   const s = createSimState();
-  const cfg = { toy: DEFAULT_CONFIG.toy, ball: DEFAULT_CONFIG.ball, machine: DEFAULT_CONFIG.machine, rightHanded: true };
+  const cfg = { toy: DEFAULT_CONFIG.toy, stance: DEFAULT_CONFIG.stance, ball: DEFAULT_CONFIG.ball, machine: DEFAULT_CONFIG.machine, rightHanded: true };
   const idle = EMPTY_FRAME;
   assert.equal(world.scene.getMeshByName('ball')!.isEnabled(), false);
   let sawBall = false;
