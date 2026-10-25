@@ -12,10 +12,11 @@ import {
 } from './config/config';
 import { DualSticks } from './input/sticks';
 import { InputRecorder } from './input/recorder';
-import { createSimState, hashSim, replayRecording, stepSim, type SimCfg } from './sim/sim';
+import { createSimState, hashSim, makeSimCfg, replayRecording, stepSim, type SimCfg } from './sim/sim';
 import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
 import { Sound } from './ui/sound';
 import { STANCE_NAMES } from './sim/stance';
+import { shotText } from './ui/shotText';
 import { createWorld } from './render/world';
 import { Overlay } from './ui/overlay';
 import { downloadText } from './ui/download';
@@ -80,11 +81,12 @@ async function main(): Promise<void> {
       camera: typeof v.camera === 'number' ? v.camera : 0,
       skeleton: typeof v.skeleton === 'boolean' ? v.skeleton : true,
       rightHanded: typeof v.rightHanded === 'boolean' ? v.rightHanded : true,
+      guide: typeof v.guide === 'boolean' ? v.guide : true,
     });
   } catch {
     /* bad saved value: keep defaults */
   }
-  const simCfg: SimCfg = { toy: cfg.toy, stance: cfg.stance, ball: cfg.ball, machine: cfg.machine, rightHanded: world.view().rightHanded };
+  const simCfg: SimCfg = makeSimCfg(cfg, world.view().rightHanded);
   const sound = new Sound();
   const unlock = () => sound.unlock();
   window.addEventListener('pointerdown', unlock, { passive: true });
@@ -151,6 +153,12 @@ async function main(): Promise<void> {
       world.setView({ camera: world.view().camera + 1 });
       saveView();
       return `Camera: ${world.cameraLabel()}`;
+    },
+    toggleGuide() {
+      const on = !world.view().guide;
+      world.setView({ guide: on });
+      saveView();
+      return on ? 'Aim guide shown' : 'Aim guide hidden';
     },
     toggleSkeleton() {
       const on = !world.view().skeleton;
@@ -222,13 +230,15 @@ async function main(): Promise<void> {
       }
       const v = sticks.visual();
       overlay.setSticks(v.left, v.right);
+      overlay.setDial(v.right, sim.swing.alpha, (simCfg.rightHanded ? 1 : -1) * (cfg.swing.direction >= 0 ? 1 : -1));
+      overlay.setShot(shotText(sim.shot, cfg.bat.sweetSpot, cfg.bat.halfWidth));
       overlay.setGates(v.left, sim.stance.gate, STANCE_NAMES[sim.stance.gate]!, cfg.stance.gateRest);
       const now = performance.now();
       if (now - hudAt > 120) {
         hudAt = now;
         const online = navigator.onLine ? 'online' : 'offline';
         overlay.setHud(
-          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat (${sim.bx.toFixed(2)}, ${sim.by.toFixed(2)})\nstate ${hashSim(sim)}`,
+          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat ${(sim.swing.alpha * 57.3).toFixed(0)} deg\nstate ${hashSim(sim)}`,
           cfg.debug.hud,
         );
       }

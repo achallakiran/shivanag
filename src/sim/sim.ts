@@ -4,51 +4,55 @@ import { InputReplayer, type Recording } from '../input/recorder';
 import { createBall, stepBall, type BallState } from './ball';
 import { createStance, stepStance, type StanceState } from './stance';
 import { createMachine, stepMachine, type MachineState } from './machine';
+import { createSwing, stepSwing, type SwingState } from './swing';
+import { contactHook, createShot, updateShot, type ShotState } from './contact';
+import { batFor } from './skeleton';
+import { planeYaw } from './bat';
+import { BAT_Z } from './field';
 
-// Phase 0 toy simulation. Its job is to prove that recorded input replays to
-// exactly the same state. It uses only + - * / and min/max/hypot-free math so
-// the result does not depend on a platform's trig functions.
-type ToyCfg = GameConfig['toy'];
-
+// The simulation: everything that must replay exactly from recorded input. No rendering here.
 export interface SimState {
   tick: number;
-  bx: number; // bat offset from the right stick (placeholder until the circle swing)
-  by: number;
-  pbx: number; // previous values, for render interpolation only
-  pby: number;
   stance: StanceState;
+  swing: SwingState;
+  shot: ShotState;
   ball: BallState;
   machine: MachineState;
 }
 
 // Everything the sim reads from the config, so a replay can be given the same values.
 export interface SimCfg {
-  toy: ToyCfg;
   stance: GameConfig['stance'];
+  swing: GameConfig['swing'];
+  bat: GameConfig['bat'];
+  body: GameConfig['body'];
   ball: GameConfig['ball'];
   machine: GameConfig['machine'];
   rightHanded: boolean;
 }
 
+export const makeSimCfg = (c: GameConfig, rightHanded: boolean): SimCfg => ({ stance: c.stance, swing: c.swing, bat: c.bat, body: c.body, ball: c.ball, machine: c.machine, rightHanded });
+
 export function createSimState(c: GameConfig['stance'] = DEFAULT_CONFIG.stance, rightHanded = true): SimState {
-  return { tick: 0, bx: 0, by: 0, pbx: 0, pby: 0, stance: createStance(c, rightHanded), ball: createBall(), machine: createMachine() };
+  return { tick: 0, stance: createStance(c, rightHanded), swing: createSwing(), shot: createShot(), ball: createBall(), machine: createMachine() };
 }
 
 export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): void {
-  const c = cfg.toy;
-  s.pbx = s.bx;
-  s.pby = s.by;
+  const rh = cfg.rightHanded;
+  // Right stick: the circle swing. Left stick: stance (locked while a swing is under way).
+  stepSwing(s.swing, f, s.stance, dt, cfg.swing, rh);
+  stepStance(s.stance, f.ly, f.lx, f.la, dt, cfg.stance, rh, s.swing.locked === 1);
+  // the swing plane follows the stance as it settles
+  s.swing.yaw = planeYaw(s.stance.gate, s.stance.pose.line, cfg.swing);
 
-  // Left stick: stance gear selector. The body moves to the chosen stance at limited speeds.
-  stepStance(s.stance, f.ly, f.lx, f.la, dt, cfg.stance, cfg.rightHanded);
+  stepMachine(s.machine, s.ball, cfg.machine, cfg.ball, dt, rh);
 
-  // Right stick: bat. First-order follow toward the stick position.
-  const k = Math.min(1, c.batResponse * dt);
-  s.bx += (f.rx * c.batReach - s.bx) * k;
-  s.by += (f.ry * c.batReach - s.by) * k;
-
-  stepMachine(s.machine, s.ball, cfg.machine, cfg.ball, dt, cfg.rightHanded);
-  stepBall(s.ball, cfg.ball, dt);
+  // bat at the start and end of this tick, then the ball moves with contact tested every sub-step
+  const f0 = batFor(s.stance.prev, s.swing.prevAlpha, s.swing.prevYaw, cfg.body, rh, BAT_Z);
+  const f1 = batFor(s.stance.pose, s.swing.alpha, s.swing.yaw, cfg.body, rh, BAT_Z);
+  const hook = contactHook({ f0, f1, dt, bat: cfg.bat, radius: cfg.ball.radius, rightHanded: rh, alpha: s.swing.alpha, shot: s.shot });
+  stepBall(s.ball, cfg.ball, dt, hook);
+  updateShot(s.shot, s.ball, s.machine.count, s.swing.alpha);
 
   s.tick++;
 }
@@ -58,7 +62,9 @@ export function hashSim(s: SimState): string {
   const b = s.ball;
   const m = s.machine;
   const p = s.stance.pose;
-  const nums = [s.bx, s.by, s.stance.gate, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length];
+  const sw = s.swing;
+  const k = s.shot;
+  const nums = [sw.alpha, sw.omega, sw.theta, sw.engaged, sw.yaw, s.stance.gate, s.stance.lineX, p.line, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length, b.hit, b.maxY, k.state, k.speed, k.launch, k.dir, k.s, k.lat];
   const buf = new DataView(new ArrayBuffer(8 * nums.length + 4));
   nums.forEach((v, i) => buf.setFloat64(i * 8, v, true));
   buf.setUint32(8 * nums.length, s.tick, true);

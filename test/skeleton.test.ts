@@ -5,7 +5,7 @@ import { BACK, FRONT, READY, SIT, STEP, createStance, targetPose } from '../src/
 import { JOINTS, JOINT_NAMES, bodyDims, dist, solvePose, twoBone, type PoseInput } from '../src/sim/skeleton';
 
 const stanceOf = (g: number, rh = true) => targetPose(g, 0, DEFAULT_CONFIG.stance, rh);
-const base: PoseInput = { stance: createStance(DEFAULT_CONFIG.stance, true).pose, bx: 0, by: 0, rightHanded: true, baseZ: -8.84 };
+const base: PoseInput = { stance: createStance(DEFAULT_CONFIG.stance, true).pose, alpha: 0, yaw: 0, rightHanded: true, baseZ: -8.84 };
 const body = DEFAULT_CONFIG.body;
 const D = bodyDims(body);
 
@@ -52,14 +52,17 @@ test('left-hander is the mirror image of the right-hander', () => {
   }
 });
 
-test('bat stick moves the bat, hands stay within reach of the shoulders', () => {
+test('the bat angle moves the bat, the bat stays a rigid 0.96 m rod, above the ground', () => {
   const rest = solvePose(base, body);
-  for (const [bx, by] of [[1.2, 0], [-1.2, 0], [0, 1.2], [0, -1.2], [1.2, 1.2]] as const) {
-    const p = solvePose({ ...base, bx, by }, body);
-    assert.ok(dist(p.batToe, rest.batToe) > 0.2, `bat moved for ${bx},${by}`);
-    assert.ok(dist(p.shoulderL, p.wristL) <= D.upperArm + D.foreArm);
-    assert.ok(dist(p.shoulderR, p.wristR) <= D.upperArm + D.foreArm);
+  for (const g of [BACK, READY, SIT, FRONT, STEP]) {
+    for (let a = 0; a <= 6.4; a += 0.2) {
+      const p = solvePose({ ...base, stance: stanceOf(g), alpha: a }, body);
+      assert.ok(Math.abs(dist(p.batTop, p.batToe) - D.batTotal) < 1e-6);
+      assert.ok(p.batToe[1] >= 0.019, `toe ${p.batToe[1]} at gate ${g} alpha ${a}`);
+      assert.ok(p.batTop[1] >= 0 || a > 0, 'top of handle above ground');
+    }
   }
+  assert.ok(dist(solvePose({ ...base, alpha: 3.14 }, body).batToe, rest.batToe) > 0.8);
 });
 
 test('every stance keeps limb lengths, keeps both feet on or above the ground and the head above the hips', () => {

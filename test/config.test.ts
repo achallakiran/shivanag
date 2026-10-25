@@ -27,13 +27,13 @@ test('merge clamps numbers to limits and ignores bad input', () => {
     sim: { stepHz: 99999, maxStepsPerFrame: 'lots' },
     input: { deadZone: -3, smoothing: Number.NaN },
     unknown: { x: 1 },
-    toy: { batReach: 2 },
+    swing: { maxOmega: 12 },
   });
   assert.equal(c.sim.stepHz, 480);
   assert.equal(c.sim.maxStepsPerFrame, DEFAULT_CONFIG.sim.maxStepsPerFrame);
   assert.equal(c.input.deadZone, 0);
   assert.equal(c.input.smoothing, DEFAULT_CONFIG.input.smoothing);
-  assert.equal(c.toy.batReach, 2);
+  assert.equal(c.swing.maxOmega, 12);
   assert.equal((c as unknown as Record<string, unknown>).unknown, undefined);
 });
 

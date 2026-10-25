@@ -25,10 +25,12 @@ export interface StancePose {
   drop: number; // extra hip drop, metres
   lean: number; // torso lean toward the bowler, metres at the shoulders
   wf: number; // weight on the front foot, 0..1
+  line: number; // where the feet point across the line, -1..1, positive toward the off side
 }
 
 export interface StanceState {
   gate: number;
+  lineX: number; // left stick sideways travel at the time the gate was last free to change
   pose: StancePose;
   prev: StancePose; // previous tick, for render interpolation only
 }
@@ -37,7 +39,7 @@ export const clonePose = (p: StancePose): StancePose => ({ ...p });
 
 export function createStance(c: StanceCfg, rightHanded: boolean): StanceState {
   const pose = targetPose(READY, 0, c, rightHanded);
-  return { gate: READY, pose, prev: clonePose(pose) };
+  return { gate: READY, lineX: 0, pose, prev: clonePose(pose) };
 }
 
 // Reads the stick. `ly` is positive up. Zone boundaries along "down" travel d = -ly:
@@ -102,7 +104,7 @@ export function targetPose(gate: number, lineX: number, c: StanceCfg, rightHande
   // The stick's horizontal travel slides the working foot sideways (across to leg, or out to off).
   if (gate === BACK) bfx += lineX * c.lineReach;
   else if (gate !== READY) ffx += lineX * c.lineReach;
-  return { ffx, ffz: ff[1], bfx, bfz: bf[1], ffLift: 0, bfLift: 0, drop, lean, wf };
+  return { ffx, ffz: ff[1], bfx, bfz: bf[1], ffLift: 0, bfLift: 0, drop, lean, wf, line: gate === READY ? 0 : Math.max(-1, Math.min(1, rightHanded ? -lineX : lineX)) };
 }
 
 const approach = (cur: number, target: number, maxDelta: number) => {
@@ -137,19 +139,24 @@ function moveFoot(p: StancePose, which: 'ff' | 'bf', tx: number, tz: number, spe
 }
 
 // One tick: pick the gate from the stick, then move the body toward that stance at limited speeds.
-export function stepStance(st: StanceState, ly: number, lx: number, active: number, dt: number, c: StanceCfg, rightHanded: boolean): void {
+// While `locked` (a swing is under way) the feet stay planted: the gate and line cannot change.
+export function stepStance(st: StanceState, ly: number, lx: number, active: number, dt: number, c: StanceCfg, rightHanded: boolean, locked = false): void {
   Object.assign(st.prev, st.pose);
-  st.gate = selectGate(ly, active, st.gate, c);
-  const t = targetPose(st.gate, active ? lx : 0, c, rightHanded);
+  if (!locked) {
+    st.gate = selectGate(ly, active, st.gate, c);
+    st.lineX = active ? lx : 0;
+  }
+  const t = targetPose(st.gate, st.lineX, c, rightHanded);
   const p = st.pose;
   moveFoot(p, 'ff', t.ffx, t.ffz, c.footSpeed, dt, 0.15);
   moveFoot(p, 'bf', t.bfx, t.bfz, c.footSpeed, dt, 0.15);
   p.drop = approach(p.drop, t.drop, c.hipSpeed * dt);
   p.lean = approach(p.lean, t.lean, c.leanSpeed * dt);
   p.wf = approach(p.wf, t.wf, c.weightSpeed * dt);
+  p.line = approach(p.line, t.line, 4 * dt);
 }
 
 export function lerpPose(a: StancePose, b: StancePose, k: number): StancePose {
   const l = (x: number, y: number) => x + (y - x) * k;
-  return { ffx: l(a.ffx, b.ffx), ffz: l(a.ffz, b.ffz), bfx: l(a.bfx, b.bfx), bfz: l(a.bfz, b.bfz), ffLift: l(a.ffLift, b.ffLift), bfLift: l(a.bfLift, b.bfLift), drop: l(a.drop, b.drop), lean: l(a.lean, b.lean), wf: l(a.wf, b.wf) };
+  return { ffx: l(a.ffx, b.ffx), ffz: l(a.ffz, b.ffz), bfx: l(a.bfx, b.bfx), bfz: l(a.bfz, b.bfz), ffLift: l(a.ffLift, b.ffLift), bfLift: l(a.bfLift, b.bfLift), drop: l(a.drop, b.drop), lean: l(a.lean, b.lean), wf: l(a.wf, b.wf), line: l(a.line, b.line) };
 }

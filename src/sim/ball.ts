@@ -28,10 +28,15 @@ export interface BallState {
   crossX: number;
   crossY: number;
   crossSpeed: number;
+  hit: number; // 1 once the bat has hit it
+  maxY: number; // highest point since the hit
+  postBounces: number; // bounces since the hit
+  pbx: number; // where it first bounced after the hit
+  pbz: number;
 }
 
 export function createBall(): BallState {
-  return { active: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0, px: 0, py: 0, pz: 0, bounces: 0, bx: 0, bz: 0, age: 0, crossed: 0, crossX: 0, crossY: 0, crossSpeed: 0 };
+  return { active: 0, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, wx: 0, wy: 0, wz: 0, px: 0, py: 0, pz: 0, bounces: 0, bx: 0, bz: 0, age: 0, crossed: 0, crossX: 0, crossY: 0, crossSpeed: 0, hit: 0, maxY: 0, postBounces: 0, pbx: 0, pbz: 0 };
 }
 
 export function launchBall(b: BallState, pos: readonly [number, number, number], vel: readonly [number, number, number], spin: readonly [number, number, number] = [0, 0, 0]): void {
@@ -45,6 +50,10 @@ export function launchBall(b: BallState, pos: readonly [number, number, number],
   b.age = 0;
   b.crossed = 0;
   b.crossX = b.crossY = b.crossSpeed = 0;
+  b.hit = 0;
+  b.maxY = 0;
+  b.postBounces = 0;
+  b.pbx = b.pbz = 0;
 }
 
 export const ballSpeed = (b: BallState) => Math.sqrt(b.vx * b.vx + b.vy * b.vy + b.vz * b.vz);
@@ -106,6 +115,13 @@ function sub(b: BallState, c: BallCfg, h: number): void {
         b.bz = b.z;
       }
       b.bounces++;
+      if (b.hit) {
+        if (b.postBounces === 0) {
+          b.pbx = b.x;
+          b.pbz = b.z;
+        }
+        b.postBounces++;
+      }
       const rest = (1 - frac) * h;
       b.x += b.vx * rest;
       b.z += b.vz * rest;
@@ -139,16 +155,21 @@ function sub(b: BallState, c: BallCfg, h: number): void {
 }
 
 // Advance one sim tick (dt seconds) with 4 sub-steps. Returns nothing; inspect `active`.
-export function stepBall(b: BallState, c: BallCfg, dt: number): void {
+// `hook` runs after every sub-step with the fraction of the tick elapsed (the bat uses it to test contact).
+export function stepBall(b: BallState, c: BallCfg, dt: number, hook?: (b: BallState, frac: number) => void): void {
   b.px = b.x;
   b.py = b.y;
   b.pz = b.z;
   if (!b.active) return;
   const h = dt / SUBSTEPS;
-  for (let i = 0; i < SUBSTEPS; i++) sub(b, c, h);
+  for (let i = 0; i < SUBSTEPS; i++) {
+    sub(b, c, h);
+    if (hook) hook(b, (i + 1) / SUBSTEPS);
+    if (b.hit && b.y > b.maxY) b.maxY = b.y;
+  }
   b.age += dt;
   const slow = b.bounces > 0 && b.y <= c.radius + 1e-6 && b.vx * b.vx + b.vz * b.vz < 0.04;
-  if (b.z < -30 || Math.abs(b.x) > 60 || b.age > 9 || slow) b.active = 0;
+  if ((!b.hit && b.z < -30) || Math.abs(b.x) > 75 || Math.abs(b.z) > 75 || b.age > 9 || slow) b.active = 0;
 }
 
 // Flies a copy of the ball to its first bounce (used by the machine to aim).

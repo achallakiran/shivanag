@@ -10,7 +10,7 @@ import { deflateSync } from 'node:zlib';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createWorld } from '../src/render/world';
 import { CAMERAS } from '../src/render/cameras';
-import { createSimState, stepSim } from '../src/sim/sim';
+import { createSimState, makeSimCfg, stepSim } from '../src/sim/sim';
 import { STANCE_NAMES, clonePose, targetPose } from '../src/sim/stance';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 
@@ -156,23 +156,17 @@ mkdirSync(outDir, { recursive: true });
 const engine = new NullEngine({ renderWidth: W, renderHeight: H, textureSize: 512, deterministicLockstep: false, lockstepMaxSteps: 1 });
 const world = createWorld(engine, DEFAULT_CONFIG);
 const s = createSimState();
-const poses: [string, number, number][] = [['rest', 0, 0], ['swing', 0.9, 0.3]];
 const summary: string[] = [];
-for (const [pname, bx, by] of poses) {
-  s.bx = s.pbx = bx;
-  s.by = s.pby = by;
-  for (const rh of [true, false]) {
-    CAMERAS.forEach((c, i) => {
-      if (pname === 'swing' && !(i === 0 || i === 3)) return;
-      if (!rh && !(pname === 'rest' && i === 0)) return;
-      world.setView({ camera: i, rightHanded: rh, skeleton: true });
-      world.update(s, 1);
-      const shot = render(world, engine);
-      const name = `${pname}-${rh ? 'RH' : 'LH'}-${c.id}`;
-      writeFileSync(`${outDir}/${name}.png`, png(shot.rgb, W, H));
-      summary.push(`${name}: batter is ${(shot.headFrac * 100).toFixed(0)}% of image height`);
-    });
-  }
+for (const rh of [true, false]) {
+  CAMERAS.forEach((c, i) => {
+    if (!rh && i !== 0) return;
+    world.setView({ camera: i, rightHanded: rh, skeleton: true });
+    world.update(s, 1);
+    const shot = render(world, engine);
+    const name = `rest-${rh ? 'RH' : 'LH'}-${c.id}`;
+    writeFileSync(`${outDir}/${name}.png`, png(shot.rgb, W, H));
+    summary.push(`${name}: batter is ${(shot.headFrac * 100).toFixed(0)}% of image height`);
+  });
 }
 // Every stance, seen from the broadcast camera and from the side.
 for (let g = 0; g < 5; g++) {
@@ -188,27 +182,31 @@ for (let g = 0; g < 5; g++) {
   summary.push(`stance ${g} ${STANCE_NAMES[g]} rendered`);
 }
 
-// A delivery in flight: broadcast and ball-follow cameras at a few moments after release.
+// A scripted front-foot drive: stance held, thumb swept round the circle; frames across the swing.
 {
-  const sim = createSimState();
-  const cfg = { toy: DEFAULT_CONFIG.toy, stance: DEFAULT_CONFIG.stance, ball: DEFAULT_CONFIG.ball, machine: { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 }, rightHanded: true };
-  world.setView({ camera: 0, rightHanded: true, skeleton: false });
-  const marks = [0.12, 0.3, 0.45, 0.6, 0.9];
-  let next = 0;
+  const mc = { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 };
+  const cfg0 = makeSimCfg({ ...DEFAULT_CONFIG, machine: mc }, true);
+  const sim = createSimState(cfg0.stance, true);
   const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
-  for (let t = 0; t < 240 * 8 && next < marks.length; t++) {
-    stepSim(sim, { lx: 0, ly: 0, la: 0, rx: 0, ry: 0, ra: 0 }, dt, cfg);
+  const delay = Number(process.argv[3] ?? 0.26), dur = 0.3;
+  let t0 = -1, frame = 0, lastShot = 0;
+  for (let t = 0; t < 240 * 9 && frame < 12; t++) {
+    if (t0 < 0 && sim.ball.active) t0 = t;
+    const sw = t0 < 0 ? -1 : t - (t0 + Math.round(delay / dt));
+    let f = { lx: -0.3, ly: 0.55, la: 1, rx: 0, ry: 0, ra: 0 };
+    if (sw >= 0) { const a = Math.min(1.2, (sw * dt) / dur) * Math.PI; f = { ...f, rx: -Math.sin(a), ry: Math.cos(a), ra: 1 }; }
+    stepSim(sim, f, dt, cfg0);
     world.update(sim, 1);
-    if (sim.ball.active && sim.ball.age >= marks[next]!) {
+    const want = sw >= 0 && sw % 24 === 0 || (sim.shot.count > lastShot);
+    if (want && sw >= -1) {
+      lastShot = sim.shot.count;
       for (const cam of [0, 1]) {
-        world.setView({ camera: cam });
+        world.setView({ camera: cam, rightHanded: true, skeleton: false });
         world.update(sim, 1);
-        const shot = render(world, engine);
-        writeFileSync(`${outDir}/ball-${next}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
+        writeFileSync(`${outDir}/drive-${String(frame).padStart(2, '0')}-${CAMERAS[cam]!.id}.png`, png(render(world, engine).rgb, W, H));
       }
-      world.setView({ camera: 0 });
-      summary.push(`ball frame ${next}: age ${sim.ball.age.toFixed(2)} s, z ${sim.ball.z.toFixed(2)}, y ${sim.ball.y.toFixed(2)}`);
-      next++;
+      summary.push(`drive ${frame}: sw ${sw}, alpha ${sim.swing.alpha.toFixed(2)}, shot state ${sim.shot.state}, ball v ${Math.hypot(sim.ball.vx, sim.ball.vy, sim.ball.vz).toFixed(1)}`);
+      frame++;
     }
   }
 }

@@ -12,6 +12,7 @@ export interface MenuActions {
   toggleHud(): string;
   cycleCamera(): string;
   toggleSkeleton(): string;
+  toggleGuide(): string;
   toggleHanded(): string;
   setSetting(path: string, value: number): string;
   status(): { offline: string; storage: string; persisted: string; external: string };
@@ -71,6 +72,11 @@ export class Overlay {
     'position:absolute;left:calc(env(safe-area-inset-left) + 10px);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:3px 9px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:600 13px -apple-system,system-ui,sans-serif;',
     'Ready',
   );
+  private dial = h('div', 'display:none;position:absolute;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#f2d27a;border:2px solid #222;box-sizing:border-box;');
+  private shotCard = h(
+    'div',
+    'display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 44px);max-width:80vw;padding:8px 14px;border-radius:12px;background:rgba(10,25,18,.82);color:#fff;font:600 15px/1.35 -apple-system,system-ui,sans-serif;text-align:center;white-space:pre-line;',
+  );
   private fileInput = h('input');
   private result = h('div', 'margin:6px 0;color:#f2d27a;white-space:pre-wrap;min-height:1.4em;');
   private open = false;
@@ -97,7 +103,7 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.cue, this.info, this.stanceLabel, ...this.gatePills, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
+    root.append(this.hud, this.cue, this.shotCard, this.info, this.dial, this.stanceLabel, ...this.gatePills, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };
@@ -147,6 +153,20 @@ export class Overlay {
       p.style.background = on ? 'rgba(242,210,122,.95)' : 'rgba(0,0,0,.4)';
       p.style.color = on ? '#222' : '#fff';
     });
+  }
+
+  // Dot on the right stick's ring showing where the bat is on its circle (so you can see it lag the thumb).
+  setDial(v: StickVisual, alpha: number, thumbSign: number): void {
+    this.dial.style.display = v.active ? 'block' : 'none';
+    if (!v.active) return;
+    const x = v.ox + v.radius * -thumbSign * Math.sin(alpha);
+    const y = v.oy - v.radius * Math.cos(alpha);
+    this.dial.style.transform = `translate(${x}px,${y}px)`;
+  }
+
+  setShot(text: string): void {
+    this.shotCard.style.display = text ? 'block' : 'none';
+    if (this.shotCard.textContent !== text) this.shotCard.textContent = text;
   }
 
   setSticks(l: StickVisual, r: StickVisual): void {
@@ -225,6 +245,7 @@ export class Overlay {
       this.button('Toggle HUD', () => this.actions.toggleHud()),
       this.button('Camera', () => this.actions.cycleCamera()),
       this.button('Skeleton on/off', () => this.actions.toggleSkeleton()),
+      this.button('Aim guide on/off', () => this.actions.toggleGuide()),
       this.button('Right/left-handed', () => this.actions.toggleHanded()),
       this.button('Reset settings', () => this.actions.resetSettings()),
       this.button('Close', () => this.toggle()),

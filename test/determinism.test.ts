@@ -4,11 +4,11 @@ import { DEFAULT_CONFIG } from '../src/config/defaults';
 import { makeRng } from '../src/core/rng';
 import { InputRecorder, InputReplayer, type Recording } from '../src/input/recorder';
 import type { InputFrame } from '../src/input/types';
-import { createSimState, hashSim, replayRecording, stepSim } from '../src/sim/sim';
+import { createSimState, hashSim, makeSimCfg, replayRecording, stepSim } from '../src/sim/sim';
 
 const cfg = DEFAULT_CONFIG;
 const dt = 1 / cfg.sim.stepHz;
-const simCfg = { toy: cfg.toy, stance: cfg.stance, ball: cfg.ball, machine: cfg.machine, rightHanded: true };
+const simCfg = makeSimCfg(cfg, true);
 
 // A made-up thumb session: sticks held for random stretches, then released.
 function session(seed: number, ticks: number): InputFrame[] {

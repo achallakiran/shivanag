@@ -1,5 +1,6 @@
 import type { GameConfig } from '../config/defaults';
 import type { StancePose } from './stance';
+import { batFrame, BAT_HANDLE, BAT_TOTAL, type BatFrame } from './bat';
 
 // Batsman skeleton, pure math (no rendering library). Phase 0.1 placeholder pose:
 // feet, hips, spine, head, shoulders, elbows, wrists and the bat are solved from the
@@ -42,12 +43,12 @@ const parentOf: Record<JointName, JointName | null> = {
 };
 export const JOINTS: JointDef[] = JOINT_NAMES.map((name) => ({ name, parent: parentOf[name], limits: { ...FREE } }));
 
-export type Pose = Record<JointName, Vec>;
+export type Pose = Record<JointName, Vec> & { batFace: Vec; batFlat: Vec };
 
 export interface PoseInput {
   stance: StancePose; // feet, hip drop, lean and weight from the stance model
-  bx: number; // bat stick offset, metres-ish from the sim
-  by: number;
+  alpha: number; // bat angle in its swing plane (see bat.ts)
+  yaw: number; // shot direction of the swing plane, toward the off side
   rightHanded: boolean;
   baseZ: number; // batting crease Z
 }
@@ -107,22 +108,25 @@ export function facingVec(rightHanded: boolean, open: number): Vec {
   return [(rightHanded ? -1 : 1) * Math.cos(open), 0, Math.sin(open)];
 }
 
-export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
+// Everything that depends only on the stance: feet, hips, torso, head, shoulders and the hands' rest position.
+export interface Torso {
+  ankleL: Vec; ankleR: Vec; toeL: Vec; toeR: Vec;
+  pelvis: Vec; hipL: Vec; hipR: Vec; spine: Vec; neck: Vec; head: Vec;
+  shoulderL: Vec; shoulderR: Vec; mid: Vec;
+  restHands: Vec; // hands' resting offset from the shoulder centre
+  fv: Vec; wv: Vec; wL: number; D: BodyDims;
+  armLen: number;
+}
+
+export function torso(st: StancePose, body: GameConfig['body'], rh: boolean, baseZ: number): Torso {
   const D = bodyDims(body);
-  const rh = inp.rightHanded;
-  // f: sign of the chest-facing direction along X. Right-handers face screen-left.
-  const f = rh ? -1 : 1;
-  // "L" is the batter's own left. For a right-hander the left side is toward the bowler (+Z).
-  const wL = rh ? 1 : -1;
+  const f = rh ? -1 : 1; // chest-facing sign along X (right-handers face screen-left)
+  const wL = rh ? 1 : -1; // "L" is the batter's own left; for a right-hander that is the side toward the bowler
   const baseX = -f * body.guardOffset; // stands on the leg side of the stumps
-  const baseZ = inp.baseZ;
-  const st = inp.stance;
-  // local (u forward along chest, w across the shoulders toward the bowler, y up) -> view frame
   const fv = facingVec(rh, body.open);
   const wv: Vec = [-f * Math.sin(body.open), 0, Math.cos(body.open)];
-  const L = (u: number, y: number, w: number): Vec => [fv[0] * u + wv[0] * w, y, fv[2] * u + wv[2] * w]; // offset only
+  const L = (u: number, y: number, w: number): Vec => [fv[0] * u + wv[0] * w, y, fv[2] * u + wv[2] * w];
 
-  // The front foot (nearer the bowler) is the batter's left for a right-hander, right for a left-hander.
   const front: Vec = [baseX + st.ffx, D.ankle + st.ffLift, baseZ + st.ffz];
   const back: Vec = [baseX + st.bfx, D.ankle + st.bfLift, baseZ + st.bfz];
   const ankleL = wL > 0 ? front : back;
@@ -130,12 +134,10 @@ export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
   const toeL = add(ankleL, L(0.2 * D.scale, -D.ankle + 0.03, 0));
   const toeR = add(ankleR, L(0.2 * D.scale, -D.ankle + 0.03, 0));
 
-  // Pelvis sits between the feet, shifted toward the foot carrying the weight.
   const px = back[0] + (front[0] - back[0]) * st.wf;
   const pz = back[2] + (front[2] - back[2]) * st.wf;
   const legMax = D.thigh + D.shin;
   const wanted = legMax * 0.93 + D.ankle - body.crouch - st.drop;
-  // Wide strides pull the hips down so the legs never have to stretch.
   const hipAt = (foot: Vec, side: number): number => {
     const hx = px + wv[0] * side * D.hipHalf;
     const hz = pz + wv[2] * side * D.hipHalf;
@@ -148,7 +150,6 @@ export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
   const hipL = add(pelvis, L(0, 0, wL * D.hipHalf));
   const hipR = add(pelvis, L(0, 0, -wL * D.hipHalf));
 
-  // Torso leans toward the bowler (and a little forward along the chest), as a batter does.
   const lean = st.lean;
   const spine = add(pelvis, L(0.02, D.torso * 0.45, lean * 0.4));
   const neck = add(pelvis, L(0.03, D.torso, lean));
@@ -156,40 +157,46 @@ export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
   const head = add(headTop, L(0.0, D.headCentre, 0.04));
   const shoulderL = add(neck, L(0, -0.04 * D.scale, wL * D.shoulderHalf));
   const shoulderR = add(neck, L(0, -0.04 * D.scale, -wL * D.shoulderHalf));
+  const mid = mul(add(shoulderL, shoulderR), 0.5);
+  const restHands = L(0.1, -0.38 * D.scale, 0.12);
+  return { ankleL, ankleR, toeL, toeR, pelvis, hipL, hipR, spine, neck, head, shoulderL, shoulderR, mid, restHands, fv, wv, wL, D, armLen: (D.upperArm + D.foreArm) * 0.92 };
+}
+
+// The bat for a stance, bat angle and swing plane. The sim and the renderer both use this.
+export function batFor(st: StancePose, alpha: number, yaw: number, body: GameConfig['body'], rh: boolean, baseZ: number): BatFrame {
+  const T = torso(st, body, rh, baseZ);
+  return batFrame(T.mid, T.restHands, alpha, yaw, rh, T.armLen);
+}
+
+export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
+  const T = torso(inp.stance, body, inp.rightHanded, inp.baseZ);
+  const { D, wL, fv, wv } = T;
+  const L = (u: number, y: number, w: number): Vec => [fv[0] * u + wv[0] * w, y, fv[2] * u + wv[2] * w];
 
   const legPole: Vec = fv;
-  const legL = twoBone(hipL, ankleL, D.thigh, D.shin, add(legPole, L(0, 0, wL * 0.3)));
-  const legR = twoBone(hipR, ankleR, D.thigh, D.shin, add(legPole, L(0, 0, -wL * 0.3)));
+  const legL = twoBone(T.hipL, T.ankleL, D.thigh, D.shin, add(legPole, L(0, 0, wL * 0.3)));
+  const legR = twoBone(T.hipR, T.ankleR, D.thigh, D.shin, add(legPole, L(0, 0, -wL * 0.3)));
 
-    const mid = mul(add(shoulderL, shoulderR), 0.5);
-  // Rest is the backlift: hands at chest height, bat raised behind the body, toe up and back toward slip.
-  const grip0 = add(mid, L(0.1, -0.38 * D.scale, 0.12));
-  const toe0 = add(grip0, L(0.18, 0.78, -0.32));
-  // The right stick moves the bat toe; the hands follow part of the way.
-  const toeTarget: Vec = add(toe0, [inp.bx * 0.9, inp.by * 0.9, 0]);
-  let grip = add(grip0, [inp.bx * 0.35, inp.by * 0.35, 0]);
-  const rel = sub(grip, mid);
-  const reach = (D.upperArm + D.foreArm) * 0.92;
-  if (len(rel) > reach) grip = add(mid, mul(norm(rel), reach));
-  const axis = norm(sub(toeTarget, grip)); // handle toward blade
-  const batTop = sub(grip, mul(axis, D.batHandle * 0.55));
-  const batToe = add(batTop, mul(axis, D.batTotal));
-  // Bottom hand at the grip, top hand a hand-width higher. Right-hander: left hand on top.
-  const topHand = sub(grip, mul(axis, 0.12));
-  const wristL = wL > 0 ? topHand : grip;
-  const wristR = wL > 0 ? grip : topHand;
+  const fr = batFrame(T.mid, T.restHands, inp.alpha, inp.yaw, inp.rightHanded, T.armLen);
+  const toe = add(fr.top, mul(fr.d, BAT_TOTAL));
+  // Bottom hand at the grip, top hand a hand-width higher up the handle. Right-hander: left hand on top.
+  const topHand = add(fr.hands, mul(fr.d, -0.12));
+  const wristL = wL > 0 ? topHand : fr.hands;
+  const wristR = wL > 0 ? fr.hands : topHand;
 
   const armPoleL: Vec = add([0, -1, 0], L(0, 0, wL * 0.6));
   const armPoleR: Vec = add([0, -1, 0], L(0, 0, -wL * 0.6));
-  const armL = twoBone(shoulderL, wristL, D.upperArm, D.foreArm, armPoleL);
-  const armR = twoBone(shoulderR, wristR, D.upperArm, D.foreArm, armPoleR);
+  const armL = twoBone(T.shoulderL, wristL, D.upperArm, D.foreArm, armPoleL);
+  const armR = twoBone(T.shoulderR, wristR, D.upperArm, D.foreArm, armPoleR);
 
   return {
-    pelvis, spine, neck, head,
-    hipL, kneeL: legL.mid, ankleL, toeL,
-    hipR, kneeR: legR.mid, ankleR, toeR,
-    shoulderL, elbowL: armL.mid, wristL: armL.end,
-    shoulderR, elbowR: armR.mid, wristR: armR.end,
-    batTop, batGrip: grip, batToe,
+    pelvis: T.pelvis, spine: T.spine, neck: T.neck, head: T.head,
+    hipL: T.hipL, kneeL: legL.mid, ankleL: T.ankleL, toeL: T.toeL,
+    hipR: T.hipR, kneeR: legR.mid, ankleR: T.ankleR, toeR: T.toeR,
+    shoulderL: T.shoulderL, elbowL: armL.mid, wristL: armL.end,
+    shoulderR: T.shoulderR, elbowR: armR.mid, wristR: armR.end,
+    batTop: fr.top, batGrip: fr.hands, batToe: toe,
+    batFace: fr.t, batFlat: fr.w,
   };
 }
+void BAT_HANDLE;

@@ -23,6 +23,7 @@ export interface ViewState {
   camera: number; // index into CAMERAS
   skeleton: boolean;
   rightHanded: boolean;
+  guide: boolean; // yellow line on the ground: the direction the bat swings through for the current stance and line
 }
 
 export interface World {
@@ -174,12 +175,12 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   let handle!: Mesh;
   handle = mk('handle', dark, (p) => {
     const ax = norm3(p.batToe, p.batTop);
-    span(handle, p.batTop, [p.batTop[0] + ax[0] * 0.3, p.batTop[1] + ax[1] * 0.3, p.batTop[2] + ax[2] * 0.3], 0.04, 0.04, [0, 0, 1]);
+    span(handle, p.batTop, [p.batTop[0] + ax[0] * 0.3, p.batTop[1] + ax[1] * 0.3, p.batTop[2] + ax[2] * 0.3], 0.04, 0.04, p.batFace);
   }).mesh;
   let bladeMesh!: Mesh;
   bladeMesh = mk('blade', blade, (p) => {
     const ax = norm3(p.batToe, p.batTop);
-    span(bladeMesh, [p.batTop[0] + ax[0] * 0.3, p.batTop[1] + ax[1] * 0.3, p.batTop[2] + ax[2] * 0.3], p.batToe, 0.108, 0.05, [0, 0, 1]);
+    span(bladeMesh, [p.batTop[0] + ax[0] * 0.3, p.batTop[1] + ax[1] * 0.3, p.batTop[2] + ax[2] * 0.3], p.batToe, 0.108, 0.07, p.batFace);
   }).mesh;
 
   // Skeleton overlay: a marker per joint and a thin bone to its parent, drawn on top of everything.
@@ -238,8 +239,13 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   let trailTick = -1;
   let lastCount = -1;
 
-  let state: ViewState = { camera: 0, skeleton: true, rightHanded: true };
-  let lastPose: Pose = solvePose({ stance: createStance(DEFAULT_CONFIG.stance, true).pose, bx: 0, by: 0, rightHanded: true, baseZ: BAT_Z }, body);
+  let state: ViewState = { camera: 0, skeleton: true, rightHanded: true, guide: true };
+  const guideMat = mat(scene, 'guide', 1, 0.9, 0.2, true);
+  const guide = CreateBox('guide', { size: 1 }, scene);
+  guide.material = guideMat;
+  guide.rotationQuaternion = new Quaternion();
+  guide.isPickable = false;
+  let lastPose: Pose = solvePose({ stance: createStance(DEFAULT_CONFIG.stance, true).pose, alpha: 0, yaw: 0, rightHanded: true, baseZ: BAT_Z }, body);
   const setSkeletonVisible = (on: boolean) => {
     for (const m of joints.values()) m.setEnabled(on);
     for (const b of bones) b.mesh.setEnabled(on);
@@ -248,16 +254,25 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   const D = bodyDims(body);
 
   const place = (s: SimState, alpha: number) => {
-    const bx = s.pbx + (s.bx - s.pbx) * alpha;
-    const by = s.pby + (s.by - s.pby) * alpha;
+    const sw = s.swing;
+    const batAlpha = sw.prevAlpha + (sw.alpha - sw.prevAlpha) * alpha;
+    const yaw = sw.prevYaw + (sw.yaw - sw.prevYaw) * alpha;
     const rh = state.rightHanded;
     const f = facingVec(rh, body.open);
-    const pose = solvePose({ stance: lerpPose(s.stance.prev, s.stance.pose, alpha), bx, by, rightHanded: rh, baseZ: BAT_Z }, body);
+    const pose = solvePose({ stance: lerpPose(s.stance.prev, s.stance.pose, alpha), alpha: batAlpha, yaw, rightHanded: rh, baseZ: BAT_Z }, body);
     lastPose = pose;
     for (const p of parts) p.place(pose, f, D.scale);
     if (state.skeleton) {
       for (const n of JOINT_NAMES) joints.get(n)!.position.copyFrom(toWorld(pose[n]));
       for (const b of bones) span(b.mesh, pose[b.a], pose[b.b], 0.018, 0.018, [0, 0, 1]);
+    }
+    // aim guide: the line the bat swings along, from the batter's feet
+    guide.setEnabled(state.guide);
+    if (state.guide) {
+      const off = rh ? -1 : 1;
+      const a: Vec = [pose.pelvis[0], 0.045, pose.pelvis[2]];
+      const b: Vec = [a[0] + off * Math.sin(yaw) * 7, 0.045, a[2] + Math.cos(yaw) * 7];
+      span(guide, a, b, 0.07, 0.004, [0, 1, 0]);
     }
     // ball
     const bl = s.ball;

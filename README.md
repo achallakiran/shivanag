@@ -10,7 +10,15 @@ Hard requirements:
 
 ## Status
 
-**v0.4.0, Phase B (stances).** The left stick is now a gear selector, not free movement. With the thumb
+**v0.5.0, Phase C+D (circle swing and first hit).** The right stick now swings the bat round a circle: the
+bat starts in the backlift (thumb up) and follows your thumb's angle, up, left, down, right for a right-hander
+(mirrored for a left-hander). Faster thumb means faster bat; stop the thumb and the bat stops (a defence);
+lift it and the bat carries on round to the backlift. The swing plane depends on the stance and the left
+stick's line. The ball now reacts to the bat: speed, contact point (sweet spot, toe, edges), face angle and
+friction give pace, direction, loft and spin. A card shows the shot. The aim guide (Menu) shows the plane.
+Tuning: `swing.*`, `bat.*`.
+
+Earlier: **v0.4.0, Phase B (stances).** The left stick is now a gear selector, not free movement. With the thumb
 down: push up for Back foot; the middle is Ready; pull down for Sit (sweep), then Front foot, then Step out.
 Labels sit beside the stick. Release the thumb and the batter returns to Ready. Left/right on the stick slides
 the working foot across or out. The body moves to each stance at limited foot, hip and lean speeds (all in
