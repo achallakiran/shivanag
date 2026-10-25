@@ -10,9 +10,12 @@ Hard requirements:
 
 ## Status
 
-**v0.1.0, Phase 0 (foundations).** Fixed-step loop, tunable config, two-thumb input,
+**v0.2.0, Phase 0.2 (visible batter).** Fixed-step loop, tunable config, two-thumb input,
 input recorder with replay verification, offline install, version/update prompt.
-A toy player and bat marker move on a pitch so input and rendering can be tested.
+A voxel batter with a visible joint skeleton stands at the crease, seen from a behind-the-bowler
+broadcast camera. Left stick moves the body, right stick moves the bat (placeholder pose, not the
+final joint-driven model). Buttons: Camera (7 views), Skeleton, and Menu (left/right-handed).
+`node tools/preview.mjs` renders every camera headless to PNG for a quick visual check.
 
 ## Play / install (iPhone)
 

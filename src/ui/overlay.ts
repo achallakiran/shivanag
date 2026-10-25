@@ -10,6 +10,9 @@ export interface MenuActions {
   importSettings(text: string): Promise<string> | string;
   resetSettings(): string;
   toggleHud(): string;
+  cycleCamera(): string;
+  toggleSkeleton(): string;
+  toggleHanded(): string;
   setSetting(path: string, value: number): string;
   status(): { offline: string; storage: string; persisted: string; external: string };
 }
@@ -46,6 +49,11 @@ export class Overlay {
     'display:none;position:absolute;left:0;right:0;top:50%;text-align:center;padding:10px;color:#fff;background:rgba(0,0,0,.55);font:600 16px -apple-system,system-ui,sans-serif;',
     'Rotate your phone to landscape',
   );
+  private toastBox = h(
+    'div',
+    'display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 52px);padding:6px 12px;border-radius:10px;background:rgba(0,0,0,.6);color:#fff;font:600 14px -apple-system,system-ui,sans-serif;white-space:nowrap;',
+  );
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
   private fileInput = h('input');
   private result = h('div', 'margin:6px 0;color:#f2d27a;white-space:pre-wrap;min-height:1.4em;');
   private open = false;
@@ -59,6 +67,10 @@ export class Overlay {
     root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:10;';
     const menuBtn = h('button', BTN + 'position:absolute;right:calc(env(safe-area-inset-right) + 8px);top:calc(env(safe-area-inset-top) + 6px);pointer-events:auto;margin:0;', 'Menu');
     menuBtn.addEventListener('click', () => this.toggle());
+    const camBtn = h('button', BTN + 'position:absolute;right:calc(env(safe-area-inset-right) + 80px);top:calc(env(safe-area-inset-top) + 6px);pointer-events:auto;margin:0;', 'Camera');
+    camBtn.addEventListener('click', () => this.toast(this.actions.cycleCamera()));
+    const skelBtn = h('button', BTN + 'position:absolute;right:calc(env(safe-area-inset-right) + 168px);top:calc(env(safe-area-inset-top) + 6px);pointer-events:auto;margin:0;', 'Skeleton');
+    skelBtn.addEventListener('click', () => this.toast(this.actions.toggleSkeleton()));
     this.fileInput.type = 'file';
     this.fileInput.accept = 'application/json,.json';
     this.fileInput.style.display = 'none';
@@ -68,7 +80,7 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, menuBtn, this.panel, this.banner, this.fileInput);
+    root.append(this.hud, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };
@@ -120,6 +132,13 @@ export class Overlay {
     this.banner.style.display = 'block';
   }
 
+  private toast(msg: string): void {
+    this.toastBox.textContent = msg;
+    this.toastBox.style.display = 'block';
+    clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => (this.toastBox.style.display = 'none'), 1800);
+  }
+
   private say(msg: string): void {
     this.result.textContent = msg;
   }
@@ -156,6 +175,9 @@ export class Overlay {
       this.button('Export settings', () => this.actions.exportSettings()),
       this.button('Import settings', () => this.fileInput.click()),
       this.button('Toggle HUD', () => this.actions.toggleHud()),
+      this.button('Camera', () => this.actions.cycleCamera()),
+      this.button('Skeleton on/off', () => this.actions.toggleSkeleton()),
+      this.button('Right/left-handed', () => this.actions.toggleHanded()),
       this.button('Reset settings', () => this.actions.resetSettings()),
       this.button('Close', () => this.toggle()),
     );

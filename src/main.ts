@@ -68,7 +68,19 @@ async function main(): Promise<void> {
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', resize);
 
-  const world = createWorld(engine);
+  const world = createWorld(engine, cfg.body);
+  // View options (camera, skeleton overlay, handedness) are remembered between sessions.
+  const saveView = () => store.set('view', JSON.stringify(world.view()));
+  try {
+    const v = JSON.parse(store.get('view') ?? '{}') as Record<string, unknown>;
+    world.setView({
+      camera: typeof v.camera === 'number' ? v.camera : 0,
+      skeleton: typeof v.skeleton === 'boolean' ? v.skeleton : true,
+      rightHanded: typeof v.rightHanded === 'boolean' ? v.rightHanded : true,
+    });
+  } catch {
+    /* bad saved value: keep defaults */
+  }
   const sticks = new DualSticks(canvas, () => cfg.input);
   const recorder = new InputRecorder(cfg.sim.stepHz);
   const sim = createSimState();
@@ -127,6 +139,23 @@ async function main(): Promise<void> {
       cfg = mergeConfig(cfg, patchFromPath('debug.hud', !cfg.debug.hud));
       saveConfig(store, cfg);
       return cfg.debug.hud ? 'HUD on.' : 'HUD off.';
+    },
+    cycleCamera() {
+      world.setView({ camera: world.view().camera + 1 });
+      saveView();
+      return `Camera: ${world.cameraLabel()}`;
+    },
+    toggleSkeleton() {
+      const on = !world.view().skeleton;
+      world.setView({ skeleton: on });
+      saveView();
+      return on ? 'Skeleton shown' : 'Skeleton hidden';
+    },
+    toggleHanded() {
+      const rh = !world.view().rightHanded;
+      world.setView({ rightHanded: rh });
+      saveView();
+      return rh ? 'Right-handed' : 'Left-handed';
     },
     setSetting(path, value) {
       cfg = mergeConfig(cfg, patchFromPath(path, value));
