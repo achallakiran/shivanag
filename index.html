@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Voxel Cricket</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #10231a; color: #e8f3ec;
+    font-family: -apple-system, system-ui, sans-serif; touch-action: none; -webkit-user-select: none; user-select: none; }
+  main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom); text-align: center; }
+  h1 { margin: 0; font-size: 28px; }
+  p { margin: 0; opacity: .8; }
+  #net { font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Voxel Cricket</h1>
+  <p>Build <span id="ver">0.0.1</span> (placeholder)</p>
+  <p>Network: <span id="net">checking</span></p>
+</main>
+<script>
+  function net() { document.getElementById('net').textContent = navigator.onLine ? 'online' : 'offline'; }
+  window.addEventListener('online', net); window.addEventListener('offline', net); net();
+</script>
+</body>
+</html>
