@@ -1,10 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
-import { BACK, FRONT, READY, SIT, STEP, createStance, targetPose } from '../src/sim/stance';
+import { BACK, FRONT, READY, REVERSE, STEP, SWEEP, SIT, createStance, targetPose } from '../src/sim/stance';
+
+const ALL = [READY, BACK, FRONT, SWEEP, REVERSE, STEP];
 import { JOINTS, JOINT_NAMES, bodyDims, dist, solvePose, twoBone, type PoseInput } from '../src/sim/skeleton';
 
-const stanceOf = (g: number, rh = true) => targetPose(g, 0, DEFAULT_CONFIG.stance, rh);
+const stanceOf = (g: number, rh = true) => targetPose(g, DEFAULT_CONFIG.stance, rh);
 const base: PoseInput = { stance: createStance(DEFAULT_CONFIG.stance, true).pose, alpha: 0, yaw: 0, rightHanded: true, baseZ: -8.84 };
 const body = DEFAULT_CONFIG.body;
 const D = bodyDims(body);
@@ -54,7 +56,7 @@ test('left-hander is the mirror image of the right-hander', () => {
 
 test('the bat angle moves the bat, the bat stays a rigid 0.96 m rod, above the ground', () => {
   const rest = solvePose(base, body);
-  for (const g of [BACK, READY, SIT, FRONT, STEP]) {
+  for (const g of ALL) {
     for (let a = 0; a <= 6.4; a += 0.2) {
       const p = solvePose({ ...base, stance: stanceOf(g), alpha: a }, body);
       assert.ok(Math.abs(dist(p.batTop, p.batToe) - D.batTotal) < 1e-6);
@@ -67,7 +69,7 @@ test('the bat angle moves the bat, the bat stays a rigid 0.96 m rod, above the g
 
 test('every stance keeps limb lengths, keeps both feet on or above the ground and the head above the hips', () => {
   for (const rh of [true, false]) {
-    for (const g of [BACK, READY, SIT, FRONT, STEP]) {
+    for (const g of ALL) {
       const p = solvePose({ ...base, stance: stanceOf(g, rh), rightHanded: rh }, body);
       assert.ok(Math.abs(dist(p.hipL, p.kneeL) - D.thigh) < 1e-6 && Math.abs(dist(p.kneeL, p.ankleL) - D.shin) < 1e-6, `left leg, gate ${g}`);
       assert.ok(Math.abs(dist(p.hipR, p.kneeR) - D.thigh) < 1e-6 && Math.abs(dist(p.kneeR, p.ankleR) - D.shin) < 1e-6, `right leg, gate ${g}`);

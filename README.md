@@ -10,7 +10,14 @@ Hard requirements:
 
 ## Status
 
-**v0.5.0, Phase C+D (circle swing and first hit).** The right stick now swings the bat round a circle: the
+**v0.6.0, Poses and a bigger player.** The two sticks are gone. Five stance buttons sit on the left edge:
+Back foot, Front foot, Sweep, Reverse sweep, Step up and hit. Tap one to choose it (tap it again for Ready); you
+can change your mind until the swing starts. Each stance is an authored posture (feet, hips, lean, chest turn,
+hands and backlift) and the body moves into it at limited speeds, so a late choice shows. The camera now frames
+the batter to fill about two thirds of the screen height on any screen (Menu: Player bigger / smaller). Swinging
+returns with swipes in v0.7; until then the bat stays in its backlift.
+
+Earlier: **v0.5.0, Phase C+D (circle swing and first hit).** The right stick now swings the bat round a circle: the
 bat starts in the backlift (thumb up) and follows your thumb's angle, up, left, down, right for a right-hander
 (mirrored for a left-hander). Faster thumb means faster bat; stop the thumb and the bat stops (a defence);
 lift it and the bat carries on round to the backlift. The swing plane depends on the stance and the left

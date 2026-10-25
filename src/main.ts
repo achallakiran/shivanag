@@ -10,12 +10,11 @@ import {
   resetConfig,
   saveConfig,
 } from './config/config';
-import { DualSticks } from './input/sticks';
 import { InputRecorder } from './input/recorder';
 import { createSimState, hashSim, makeSimCfg, replayRecording, stepSim, type SimCfg } from './sim/sim';
 import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
 import { Sound } from './ui/sound';
-import { STANCE_NAMES } from './sim/stance';
+import { STANCE_NAMES, READY } from './sim/stance';
 import { shotText } from './ui/shotText';
 import { createWorld } from './render/world';
 import { Overlay } from './ui/overlay';
@@ -81,7 +80,8 @@ async function main(): Promise<void> {
       camera: typeof v.camera === 'number' ? v.camera : 0,
       skeleton: typeof v.skeleton === 'boolean' ? v.skeleton : true,
       rightHanded: typeof v.rightHanded === 'boolean' ? v.rightHanded : true,
-      guide: typeof v.guide === 'boolean' ? v.guide : true,
+      guide: typeof v.guide === 'boolean' ? v.guide : false,
+      size: typeof v.size === 'number' ? v.size : 1,
     });
   } catch {
     /* bad saved value: keep defaults */
@@ -90,7 +90,7 @@ async function main(): Promise<void> {
   const sound = new Sound();
   const unlock = () => sound.unlock();
   window.addEventListener('pointerdown', unlock, { passive: true });
-  const sticks = new DualSticks(canvas, () => cfg.input);
+  let selected = READY; // the stance button chosen; tapping the chosen one again returns to Ready
   const recorder = new InputRecorder(cfg.sim.stepHz);
   const sim = createSimState(cfg.stance, simCfg.rightHanded);
 
@@ -160,6 +160,12 @@ async function main(): Promise<void> {
       saveView();
       return on ? 'Aim guide shown' : 'Aim guide hidden';
     },
+    playerSize(dir) {
+      const size = Math.round((world.view().size + dir * 0.1) * 10) / 10;
+      world.setView({ size });
+      saveView();
+      return `Player size ${(world.view().size * 100).toFixed(0)}%`;
+    },
     toggleSkeleton() {
       const on = !world.view().skeleton;
       world.setView({ skeleton: on });
@@ -191,6 +197,11 @@ async function main(): Promise<void> {
     },
   }, () => cfg);
 
+  overlay.buildStanceButtons(STANCE_NAMES, (i) => {
+    selected = selected === i ? READY : i;
+    sound.unlock();
+  });
+
   if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
     pwa = registerServiceWorker({ onUpdateReady: (apply) => overlay.showUpdate(apply) });
   }
@@ -202,7 +213,7 @@ async function main(): Promise<void> {
     stepHz: cfg.sim.stepHz,
     maxStepsPerFrame: cfg.sim.maxStepsPerFrame,
     step: (tick, dt) => {
-      const f = sticks.sample();
+      const f = { sel: selected, rx: 0, ry: 0, ra: 0 as 0 | 1 };
       recorder.push(tick, f);
       stepSim(sim, f, dt, simCfg);
     },
@@ -228,11 +239,8 @@ async function main(): Promise<void> {
         const atBat = bl.crossed ? `  at crease: ${(bl.crossSpeed * 3.6).toFixed(0)} km/h, height ${bl.crossY.toFixed(2)} m` : '';
         overlay.setInfo(`Ball ${m.count}: ${m.speedKmh.toFixed(0)} km/h, pitched ${pitched} from stumps${atBat}`);
       }
-      const v = sticks.visual();
-      overlay.setSticks(v.left, v.right);
-      overlay.setDial(v.right, sim.swing.alpha, (simCfg.rightHanded ? 1 : -1) * (cfg.swing.direction >= 0 ? 1 : -1));
       overlay.setShot(shotText(sim.shot, cfg.bat.sweetSpot, cfg.bat.halfWidth));
-      overlay.setGates(v.left, sim.stance.gate, STANCE_NAMES[sim.stance.gate]!, cfg.stance.gateRest);
+      overlay.setStance(selected, sim.stance.gate, STANCE_NAMES[sim.stance.gate]!);
       const now = performance.now();
       if (now - hudAt > 120) {
         hudAt = now;

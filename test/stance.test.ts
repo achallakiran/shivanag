@@ -1,55 +1,51 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
-import { BACK, FRONT, READY, SIT, STEP, createStance, selectGate, stepStance, targetPose } from '../src/sim/stance';
+import { BACK, FRONT, READY, REVERSE, STANCE_COUNT, STANCE_NAMES, STEP, SWEEP, createStance, stepStance, targetPose } from '../src/sim/stance';
+import { solvePose } from '../src/sim/skeleton';
 
 const c = DEFAULT_CONFIG.stance;
+const body = DEFAULT_CONFIG.body;
 const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
+const pose = (g: number, rh = true) => solvePose({ stance: targetPose(g, c, rh), alpha: 0, yaw: 0, rightHanded: rh, baseZ: -8.84 }, body);
 
-test('stick position picks the gate: up is back foot, then ready, then sit, front, step', () => {
-  assert.equal(selectGate(0.9, 1, READY, c), BACK);
-  assert.equal(selectGate(0, 1, READY, c), READY);
-  assert.equal(selectGate(-0.4, 1, READY, c), SIT);
-  assert.equal(selectGate(-0.6, 1, READY, c), FRONT);
-  assert.equal(selectGate(-0.95, 1, READY, c), STEP);
-  assert.equal(selectGate(-0.95, 0, READY, c), READY, 'released thumb is ready');
+test('there are six stances, each with a name', () => {
+  assert.equal(STANCE_COUNT, 6);
+  assert.deepEqual([...STANCE_NAMES], ['Ready', 'Back foot', 'Front foot', 'Sweep', 'Reverse sweep', 'Step up and hit']);
 });
 
-test('hysteresis: wobbling across a boundary does not flip the gate', () => {
-  const edge = c.gateRest; // Ready | Sit boundary at d = rest
-  let g = READY;
-  const seq: number[] = [];
-  for (const d of [edge - 0.02, edge + 0.02, edge - 0.02, edge + 0.03, edge + 0.07, edge + 0.03, edge - 0.02, edge - 0.08]) {
-    g = selectGate(-d, 1, g, c);
-    seq.push(g);
-  }
-  assert.deepEqual(seq, [READY, READY, READY, READY, SIT, SIT, SIT, READY]);
+test('the body takes the selected stance, and any stance can be replaced by another before the swing', () => {
+  const st = createStance(c, true);
+  stepStance(st, FRONT, dt, c, true);
+  assert.equal(st.gate, FRONT);
+  stepStance(st, SWEEP, dt, c, true);
+  assert.equal(st.gate, SWEEP, 'changed its mind');
+  stepStance(st, READY, dt, c, true);
+  assert.equal(st.gate, READY);
+  stepStance(st, 99, dt, c, true);
+  assert.equal(st.gate, READY, 'nonsense selections are ignored');
 });
 
-test('every gate can be reached by sweeping the stick and in order', () => {
-  let g = READY;
-  const seen: number[] = [];
-  for (let d = -1; d <= 1; d += 0.01) {
-    g = selectGate(-d, 1, g, c);
-    if (seen[seen.length - 1] !== g) seen.push(g);
-  }
-  assert.deepEqual(seen, [BACK, READY, SIT, FRONT, STEP]);
+test('a locked swing keeps the feet planted: the stance cannot change', () => {
+  const st = createStance(c, true);
+  stepStance(st, FRONT, dt, c, true);
+  stepStance(st, BACK, dt, c, true, true);
+  assert.equal(st.gate, FRONT);
 });
 
 test('stance change takes real time, bounded by the foot speed', () => {
   const st = createStance(c, true);
+  const t = targetPose(STEP, c, true);
+  const dist = Math.hypot(t.ffx - st.pose.ffx, t.ffz - st.pose.ffz);
   let ticks = 0;
-  const dist = Math.hypot(targetPose(STEP, 0, c, true).ffx - st.pose.ffx, targetPose(STEP, 0, c, true).ffz - st.pose.ffz);
   while (ticks < 240 * 5) {
-    stepStance(st, -1, 0, 1, dt, c, true);
+    stepStance(st, STEP, dt, c, true);
     ticks++;
-    const t = targetPose(STEP, 0, c, true);
-    if (Math.abs(st.pose.ffz - t.ffz) < 1e-9 && Math.abs(st.pose.ffx - t.ffx) < 1e-9 && Math.abs(st.pose.drop - t.drop) < 1e-9 && Math.abs(st.pose.lean - t.lean) < 1e-9) break;
+    if (Math.abs(st.pose.ffz - t.ffz) < 1e-9 && Math.abs(st.pose.ffx - t.ffx) < 1e-9 && Math.abs(st.pose.drop - t.drop) < 1e-9 && Math.abs(st.pose.lean - t.lean) < 1e-9 && Math.abs(st.pose.hy - t.hy) < 1e-9) break;
   }
   const seconds = ticks * dt;
   assert.ok(seconds >= dist / c.footSpeed - 0.02, `arrived too fast: ${seconds}s for ${dist}m`);
   assert.ok(seconds < 3, `too slow ${seconds}s`);
-  assert.equal(st.gate, STEP);
 });
 
 test('a foot never moves faster than footSpeed, and lifts while it travels', () => {
@@ -58,7 +54,7 @@ test('a foot never moves faster than footSpeed, and lifts while it travels', () 
   for (let i = 0; i < 480; i++) {
     const x = st.pose.ffx;
     const z = st.pose.ffz;
-    stepStance(st, -0.9, 0, 1, dt, c, true);
+    stepStance(st, STEP, dt, c, true);
     assert.ok(Math.hypot(st.pose.ffx - x, st.pose.ffz - z) <= c.footSpeed * dt + 1e-12);
     maxLift = Math.max(maxLift, st.pose.ffLift);
   }
@@ -66,25 +62,63 @@ test('a foot never moves faster than footSpeed, and lifts while it travels', () 
   assert.ok(st.pose.ffLift < 1e-9, 'foot is down again on arrival');
 });
 
-test('releasing the stick returns to ready, and it also takes time', () => {
+test('the hands, chest turn and backlift also move at limited speeds', () => {
   const st = createStance(c, true);
-  for (let i = 0; i < 240 * 2; i++) stepStance(st, -0.9, 0, 1, dt, c, true);
-  assert.equal(st.gate, STEP);
-  stepStance(st, 0, 0, 0, dt, c, true);
-  assert.equal(st.gate, READY);
-  assert.ok(st.pose.ffz > targetPose(READY, 0, c, true).ffz + 0.5, 'feet have not teleported back');
-  for (let i = 0; i < 240 * 3; i++) stepStance(st, 0, 0, 0, dt, c, true);
-  assert.ok(Math.abs(st.pose.ffz - targetPose(READY, 0, c, true).ffz) < 1e-9);
+  let prev = { ...st.pose };
+  for (let i = 0; i < 240; i++) {
+    stepStance(st, BACK, dt, c, true);
+    assert.ok(Math.abs(st.pose.open - prev.open) <= c.turnSpeed * dt + 1e-12);
+    assert.ok(Math.abs(st.pose.blBack - prev.blBack) <= c.turnSpeed * dt + 1e-12);
+    assert.ok(Math.abs(st.pose.hy - prev.hy) <= c.handSpeed * dt + 1e-12);
+    prev = { ...st.pose };
+  }
 });
 
-test('stick sideways slides the working foot; left-handers are mirrored', () => {
-  const a = targetPose(FRONT, 0, c, true);
-  const b = targetPose(FRONT, 1, c, true);
-  assert.ok(Math.abs(b.ffx - a.ffx - c.lineReach) < 1e-9);
-  assert.equal(b.bfx, a.bfx);
-  const back = targetPose(BACK, 1, c, true);
-  assert.ok(back.bfx > targetPose(BACK, 0, c, true).bfx);
-  const lh = targetPose(SIT, 0, c, false);
-  const rh = targetPose(SIT, 0, c, true);
-  assert.ok(Math.abs(lh.ffx + rh.ffx) < 1e-9 && lh.ffz === rh.ffz);
+test('left-handers are the mirror image of right-handers', () => {
+  for (let g = 0; g < STANCE_COUNT; g++) {
+    const lh = targetPose(g, c, false);
+    const rh = targetPose(g, c, true);
+    assert.ok(Math.abs(lh.ffx + rh.ffx) < 1e-9 && Math.abs(lh.bfx + rh.bfx) < 1e-9, `feet x, ${STANCE_NAMES[g]}`);
+    assert.equal(lh.ffz, rh.ffz);
+    assert.equal(lh.blBack, rh.blBack);
+  }
+});
+
+test('stances are authored the way cricketers play them', () => {
+  const ready = pose(READY);
+  const side = (n: string, p = ready) => p[n as 'pelvis'];
+  void side;
+  const f = (g: number) => pose(g);
+  // feet: ready is shoulder width and roughly square to the crease
+  const spread = Math.abs(ready.ankleL[0] - ready.ankleR[0]);
+  assert.ok(spread > 0.35 && spread < 0.6, `ready feet ${spread}`);
+  assert.ok(Math.abs(ready.ankleL[2] - ready.ankleR[2]) < 0.3);
+  // back foot: rear foot goes back and across, weight back, upright; front foot stays near the crease
+  assert.ok(f(BACK).ankleR[2] < ready.ankleR[2] - 0.3);
+  assert.ok(f(BACK).ankleL[2] < ready.ankleL[2] + 0.2);
+  assert.ok(f(BACK).head[1] >= f(FRONT).head[1]);
+  // front foot: long stride toward the bowler with the head forward of the back foot
+  assert.ok(f(FRONT).ankleL[2] > ready.ankleL[2] + 0.4);
+  assert.ok(f(FRONT).head[2] > f(FRONT).ankleR[2]);
+  // sweep: low, front foot forward, back foot behind with the hips well down
+  assert.ok(f(SWEEP).pelvis[1] < ready.pelvis[1] - 0.25);
+  assert.ok(f(SWEEP).ankleL[2] > ready.ankleL[2] + 0.3);
+  assert.ok(f(SWEEP).ankleR[2] < f(SWEEP).ankleL[2] - 0.4);
+  // reverse sweep: as low as the sweep but turned further toward the bowler
+  assert.ok(Math.abs(f(REVERSE).pelvis[1] - f(SWEEP).pelvis[1]) < 0.1);
+  assert.ok(targetPose(REVERSE, c, true).open > targetPose(SWEEP, c, true).open + 0.3);
+  // step up: the longest stride
+  assert.ok(f(STEP).ankleL[2] > f(FRONT).ankleL[2] + 0.4);
+});
+
+test('the backlift raises the bat: hands above the hips, bat tilted back, blade above the head height of the hands', () => {
+  for (const g of [READY, BACK, FRONT, STEP]) {
+    const p = pose(g);
+    assert.ok(p.batGrip[1] > p.pelvis[1] - 0.1, `hands near or above the hips, ${STANCE_NAMES[g]}`);
+    assert.ok(p.batToe[1] > p.batGrip[1] + 0.3 || g === READY, `toe up, ${STANCE_NAMES[g]}`);
+    // the blade is behind the hands (toward the keeper) when the backlift is back
+    assert.ok(p.batToe[2] <= p.batGrip[2] + 1e-9);
+  }
+  // the back-foot backlift is higher than the ready one
+  assert.ok(pose(BACK).batToe[1] > pose(READY).batToe[1]);
 });

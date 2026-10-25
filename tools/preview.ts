@@ -14,8 +14,8 @@ import { createSimState, makeSimCfg, stepSim } from '../src/sim/sim';
 import { STANCE_NAMES, clonePose, targetPose } from '../src/sim/stance';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 
-const W = 1280;
-const H = 590;
+const W = Number(process.env.PW ?? 956); // iPhone Pro Max landscape
+const H = Number(process.env.PH ?? 440);
 
 function crc32(buf: Buffer): number {
   let c = ~0;
@@ -168,23 +168,23 @@ for (const rh of [true, false]) {
     summary.push(`${name}: batter is ${(shot.headFrac * 100).toFixed(0)}% of image height`);
   });
 }
-// Every stance, seen from the broadcast camera and from the side.
-for (let g = 0; g < 5; g++) {
+// Every stance, from the broadcast camera, the side and from behind.
+for (let g = 0; g < STANCE_NAMES.length; g++) {
   const st = createSimState();
-  st.stance.pose = targetPose(g, 0, DEFAULT_CONFIG.stance, true);
+  st.stance.pose = targetPose(g, DEFAULT_CONFIG.stance, true);
   st.stance.prev = clonePose(st.stance.pose);
-  for (const cam of [0, 6]) {
-    world.setView({ camera: cam, rightHanded: true, skeleton: true });
+  for (const cam of [0, 6, 4]) {
+    world.setView({ camera: cam, rightHanded: true, skeleton: false });
     world.update(st, 1);
     const shot = render(world, engine);
     writeFileSync(`${outDir}/stance-${g}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
+    if (cam === 0) summary.push(`stance ${g} ${STANCE_NAMES[g]}: batter is ${(shot.headFrac * 100).toFixed(0)}% of the screen height`);
   }
-  summary.push(`stance ${g} ${STANCE_NAMES[g]} rendered`);
 }
 
 // A scripted front-foot drive: stance held, thumb swept round the circle; frames across the swing.
 {
-  const mc = { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 };
+  const mc = { ...DEFAULT_CONFIG.machine, line: -0.3, lineJitter: 0, lengthJitter: 0, speedJitter: 0 };
   const cfg0 = makeSimCfg({ ...DEFAULT_CONFIG, machine: mc }, true);
   const sim = createSimState(cfg0.stance, true);
   const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
@@ -193,7 +193,7 @@ for (let g = 0; g < 5; g++) {
   for (let t = 0; t < 240 * 9 && frame < 12; t++) {
     if (t0 < 0 && sim.ball.active) t0 = t;
     const sw = t0 < 0 ? -1 : t - (t0 + Math.round(delay / dt));
-    let f = { lx: -0.3, ly: 0.55, la: 1, rx: 0, ry: 0, ra: 0 };
+    let f = { sel: 2, rx: 0, ry: 0, ra: 0 as 0 | 1 };
     if (sw >= 0) { const a = Math.min(1.2, (sw * dt) / dur) * Math.PI; f = { ...f, rx: -Math.sin(a), ry: Math.cos(a), ra: 1 }; }
     stepSim(sim, f, dt, cfg0);
     world.update(sim, 1);

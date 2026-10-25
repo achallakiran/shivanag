@@ -39,12 +39,8 @@ export interface GameConfig {
     halfThick: number;
     edgeTilt: number; // how far the contact normal tilts at the very edge, radians
   };
-  // Stances (left stick gear selector). Distances in metres, speeds in m/s. The stick's vertical travel
-  // is read as a fraction of the stick radius: up is Back foot; the first `gateRest` either side is Ready;
-  // pulling down passes Sit, Front foot, then Step out in equal slices.
+  // Stances (tap-to-select buttons). Distances in metres, speeds in m/s (or rad/s for turns).
   stance: {
-    gateRest: number;
-    hysteresis: number;
     footSpeed: number;
     hipSpeed: number;
     leanSpeed: number;
@@ -54,7 +50,8 @@ export interface GameConfig {
     sitDrop: number;
     frontStride: number;
     stepOut: number;
-    lineReach: number;
+    turnSpeed: number; // chest turn and backlift, rad/s
+    handSpeed: number; // hands, m/s
   };
   // Batsman body proportions and stance. Metres. Placeholder pose until the full joint model (Phase 3).
   body: { height: number; stanceWidth: number; crouch: number; lean: number; guardOffset: number; open: number };
@@ -92,7 +89,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   input: { stickRadiusPx: 100, deadZone: 0.08, smoothing: 0.5, leftZoneFraction: 0.5, edgeMarginPx: 20 },
   swing: { engage: 0.35, release: 0.25, direction: 1, maxOmega: 20, response: 40, recoverOmega: 4, yawReady: 0, gainReady: 0.5, yawBack: 0, gainBack: 1.3, yawSit: -1.1, gainSit: 0.5, yawFront: 0, gainFront: 0.6, yawStep: 0, gainStep: 0.5 },
   bat: { sweetSpot: 0.8, sweetWidth: 0.1, acorSweet: 0.3, acorEdge: 0.1, friction: 0.35, halfWidth: 0.09, halfThick: 0.035, edgeTilt: 1 },
-  stance: { gateRest: 0.25, hysteresis: 0.05, footSpeed: 3.2, hipSpeed: 1.4, leanSpeed: 1, weightSpeed: 2.5, backStep: 0.4, sitReach: 0.55, sitDrop: 0.4, frontStride: 0.65, stepOut: 1.4, lineReach: 0.3 },
+  stance: { footSpeed: 3.2, hipSpeed: 1.4, leanSpeed: 1, weightSpeed: 2.5, backStep: 0.4, sitReach: 0.55, sitDrop: 0.4, frontStride: 0.65, stepOut: 1.4, turnSpeed: 3, handSpeed: 1.2 },
   body: { height: 1.8, stanceWidth: 0.45, crouch: 0.1, lean: 0.12, guardOffset: 0.3, open: 0.6 },
   ball: { radius: 0.036, drag: 0.0061, magnus: 0.00055, pitchE: 0.56, pitchMu: 0.55, pitchRoll: 0.5, grassE: 0.35, grassMu: 0.5, grassRoll: 1.8, visualScale: 2.5 },
   machine: { speedKmh: 110, line: 0.1, length: 5.5, speedJitter: 6, lineJitter: 0.2, lengthJitter: 0.8, cue: 1, pause: 2 },
@@ -133,8 +130,6 @@ export const LIMITS: Record<string, [number, number]> = {
   'bat.halfWidth': [0.03, 0.3],
   'bat.halfThick': [0.02, 0.1],
   'bat.edgeTilt': [0, 1.4],
-  'stance.gateRest': [0.05, 0.5],
-  'stance.hysteresis': [0, 0.15],
   'stance.footSpeed': [0.5, 10],
   'stance.hipSpeed': [0.2, 5],
   'stance.leanSpeed': [0.2, 5],
@@ -144,7 +139,8 @@ export const LIMITS: Record<string, [number, number]> = {
   'stance.sitDrop': [0, 0.6],
   'stance.frontStride': [0, 1.2],
   'stance.stepOut': [0, 2.5],
-  'stance.lineReach': [0, 0.8],
+  'stance.turnSpeed': [0.5, 12],
+  'stance.handSpeed': [0.2, 6],
   'body.height': [1.4, 2.1],
   'body.stanceWidth': [0.2, 0.9],
   'body.crouch': [0, 0.3],

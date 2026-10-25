@@ -1,6 +1,5 @@
 import type { GameConfig } from '../config/defaults';
 import { numericSettings } from '../config/config';
-import type { StickVisual } from '../input/sticks';
 
 export interface MenuActions {
   checkUpdate(): Promise<string>;
@@ -13,6 +12,7 @@ export interface MenuActions {
   cycleCamera(): string;
   toggleSkeleton(): string;
   toggleGuide(): string;
+  playerSize(dir: number): string;
   toggleHanded(): string;
   setSetting(path: string, value: number): string;
   status(): { offline: string; storage: string; persisted: string; external: string };
@@ -33,10 +33,6 @@ export class Overlay {
     'pre',
     'position:absolute;left:calc(env(safe-area-inset-left) + 8px);top:calc(env(safe-area-inset-top) + 6px);margin:0;padding:4px 6px;font:11px/1.35 ui-monospace,Menlo,monospace;color:#bfe8cc;background:rgba(0,0,0,.35);border-radius:6px;white-space:pre;',
   );
-  private ringL = this.ring();
-  private ringR = this.ring();
-  private knobL = this.knob();
-  private knobR = this.knob();
   private panel = h(
     'div',
     'display:none;position:absolute;right:calc(env(safe-area-inset-right) + 8px);top:calc(env(safe-area-inset-top) + 48px);width:min(92vw,520px);max-height:calc(100% - env(safe-area-inset-top) - 64px);overflow:auto;-webkit-overflow-scrolling:touch;touch-action:pan-y;pointer-events:auto;box-sizing:border-box;padding:12px;border-radius:12px;background:rgba(10,25,18,.95);color:#e8f3ec;font:14px/1.4 -apple-system,system-ui,sans-serif;',
@@ -64,15 +60,13 @@ export class Overlay {
     'div',
     'position:absolute;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:4px 10px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:12px ui-monospace,Menlo,monospace;white-space:pre;text-align:center;',
   );
-  private gatePills = ['BACK', 'SIT', 'FRONT', 'STEP'].map((t) =>
-    h('div', 'display:none;position:absolute;left:0;top:0;padding:0 8px;border-radius:9px;font:700 11px -apple-system,system-ui,sans-serif;color:#fff;background:rgba(0,0,0,.4);border:1px solid rgba(255,255,255,.35);white-space:nowrap;box-sizing:border-box;', t),
-  );
   private stanceLabel = h(
     'div',
     'position:absolute;left:calc(env(safe-area-inset-left) + 10px);bottom:calc(env(safe-area-inset-bottom) + 8px);padding:3px 9px;border-radius:8px;background:rgba(0,0,0,.45);color:#e8f3ec;font:600 13px -apple-system,system-ui,sans-serif;',
     'Ready',
   );
-  private dial = h('div', 'display:none;position:absolute;left:0;top:0;width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#f2d27a;border:2px solid #222;box-sizing:border-box;');
+  private buttons: HTMLButtonElement[] = [];
+  private onSelect: (i: number) => void = () => {};
   private shotCard = h(
     'div',
     'display:none;position:absolute;left:50%;transform:translateX(-50%);top:calc(env(safe-area-inset-top) + 44px);max-width:80vw;padding:8px 14px;border-radius:12px;background:rgba(10,25,18,.82);color:#fff;font:600 15px/1.35 -apple-system,system-ui,sans-serif;text-align:center;white-space:pre-line;',
@@ -103,20 +97,13 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.cue, this.shotCard, this.info, this.dial, this.stanceLabel, ...this.gatePills, this.ringL, this.knobL, this.ringR, this.knobR, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
+    root.append(this.hud, this.cue, this.shotCard, this.info, this.stanceLabel, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };
     window.addEventListener('resize', onResize);
     window.addEventListener('orientationchange', onResize);
     onResize();
-  }
-
-  private ring(): HTMLDivElement {
-    return h('div', 'display:none;position:absolute;left:0;top:0;border:2px solid rgba(255,255,255,.35);border-radius:50%;box-sizing:border-box;');
-  }
-  private knob(): HTMLDivElement {
-    return h('div', 'display:none;position:absolute;left:0;top:0;width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.5);');
   }
 
   setCue(text: string, color: string): void {
@@ -134,61 +121,38 @@ export class Overlay {
     if (visible) this.hud.textContent = text;
   }
 
-  // Gate labels beside the left stick: BACK above the centre, then SIT, FRONT, STEP down the travel.
-  // `gate` is the stance index (0 back, 1 ready, 2 sit, 3 front, 4 step); `rest` is the stance.gateRest zone.
-  setGates(v: StickVisual, gate: number, name: string, rest: number): void {
-    if (this.stanceLabel.textContent !== name) this.stanceLabel.textContent = name;
-    const w = (1 - rest) / 3;
-    // centre of each pill, in units of the stick radius, positive down
-    const centres = [-(rest + 0.3), rest + w * 0.5, rest + w * 1.5, rest + w * 2.5];
-    const selected = [0, -1, 1, 2, 3][gate]!; // pill index lit for each stance, -1 for ready
-    this.gatePills.forEach((p, i) => {
-      p.style.display = v.active ? 'block' : 'none';
-      if (!v.active) return;
-      const hgt = Math.max(16, Math.min(w * v.radius - 3, 26));
-      p.style.height = `${hgt}px`;
-      p.style.lineHeight = `${hgt - 2}px`;
-      p.style.transform = `translate(${v.ox + v.radius + 8}px,${v.oy + centres[i]! * v.radius - hgt / 2}px)`;
-      const on = i === selected;
-      p.style.background = on ? 'rgba(242,210,122,.95)' : 'rgba(0,0,0,.4)';
-      p.style.color = on ? '#222' : '#fff';
+  // Stance buttons down the left edge. Tap one to choose that stance; tap it again to go back to Ready.
+  // The choice can change at any time until the swing starts.
+  buildStanceButtons(labels: readonly string[], onSelect: (i: number) => void): void {
+    this.onSelect = onSelect;
+    const col = h('div', 'position:absolute;left:calc(env(safe-area-inset-left) + 10px);top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:8px;pointer-events:none;');
+    labels.forEach((t, i) => {
+      if (i === 0) return; // Ready has no button
+      const b = h('button', 'pointer-events:auto;touch-action:none;width:112px;height:50px;border-radius:12px;border:2px solid rgba(255,255,255,.4);background:rgba(0,0,0,.45);color:#fff;font:700 13px/1.1 -apple-system,system-ui,sans-serif;padding:2px 6px;', t);
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        this.onSelect(i);
+      });
+      this.buttons[i] = b;
+      col.append(b);
     });
+    this.root.append(col);
   }
 
-  // Dot on the right stick's ring showing where the bat is on its circle (so you can see it lag the thumb).
-  setDial(v: StickVisual, alpha: number, thumbSign: number): void {
-    this.dial.style.display = v.active ? 'block' : 'none';
-    if (!v.active) return;
-    const x = v.ox + v.radius * -thumbSign * Math.sin(alpha);
-    const y = v.oy - v.radius * Math.cos(alpha);
-    this.dial.style.transform = `translate(${x}px,${y}px)`;
+  setStance(sel: number, current: number, name: string): void {
+    if (this.stanceLabel.textContent !== name) this.stanceLabel.textContent = name;
+    this.buttons.forEach((b, i) => {
+      if (!b) return;
+      const on = i === sel;
+      b.style.background = on ? 'rgba(242,210,122,.95)' : 'rgba(0,0,0,.45)';
+      b.style.color = on ? '#222' : '#fff';
+      b.style.borderColor = on ? '#fff' : i === current ? 'rgba(242,210,122,.9)' : 'rgba(255,255,255,.4)';
+    });
   }
 
   setShot(text: string): void {
     this.shotCard.style.display = text ? 'block' : 'none';
     if (this.shotCard.textContent !== text) this.shotCard.textContent = text;
-  }
-
-  setSticks(l: StickVisual, r: StickVisual): void {
-    this.placeStick(this.ringL, this.knobL, l);
-    this.placeStick(this.ringR, this.knobR, r);
-  }
-
-  private placeStick(ring: HTMLElement, knob: HTMLElement, v: StickVisual): void {
-    ring.style.display = knob.style.display = v.active ? 'block' : 'none';
-    if (!v.active) return;
-    const d = v.radius * 2;
-    ring.style.width = ring.style.height = `${d}px`;
-    ring.style.transform = `translate(${v.ox - v.radius}px,${v.oy - v.radius}px)`;
-    // keep the knob inside the ring
-    let dx = v.cx - v.ox;
-    let dy = v.cy - v.oy;
-    const m = Math.hypot(dx, dy);
-    if (m > v.radius) {
-      dx = (dx / m) * v.radius;
-      dy = (dy / m) * v.radius;
-    }
-    knob.style.transform = `translate(${v.ox + dx - 18}px,${v.oy + dy - 18}px)`;
   }
 
   showUpdate(apply: () => void): void {
@@ -246,6 +210,8 @@ export class Overlay {
       this.button('Camera', () => this.actions.cycleCamera()),
       this.button('Skeleton on/off', () => this.actions.toggleSkeleton()),
       this.button('Aim guide on/off', () => this.actions.toggleGuide()),
+      this.button('Player bigger', () => this.actions.playerSize(1)),
+      this.button('Player smaller', () => this.actions.playerSize(-1)),
       this.button('Right/left-handed', () => this.actions.toggleHanded()),
       this.button('Reset settings', () => this.actions.resetSettings()),
       this.button('Close', () => this.toggle()),

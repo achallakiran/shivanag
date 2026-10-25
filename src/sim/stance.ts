@@ -1,17 +1,20 @@
 import type { GameConfig } from '../config/defaults';
 
-// Stances: the left stick is a gear selector. Each stance is a full-body target (feet, hip drop,
-// torso lean, weight). The body then moves toward the target at limited speeds, so choosing a
-// stance late means the feet are not there yet. Coordinates are the view frame relative to the
-// batter's guard: X screen-right, Z toward the bowler. All values come from config.
+// Stances. The player taps a stance button (and may change their mind until the swing starts). Each stance is an
+// authored full-body posture: feet, hip drop, torso lean, weight, chest turn, hands and the bat's backlift. The body
+// then moves toward the target at limited speeds, so choosing a stance late means the feet have not arrived.
+// Coordinates are the view frame relative to the batter's guard: X screen-right, Z toward the bowler.
+// Written in "off-side" terms (positive x = toward the off side) and mirrored for left-handers.
 
-export const BACK = 0;
-export const READY = 1;
-export const SIT = 2;
-export const FRONT = 3;
-export const STEP = 4;
-export const STANCE_NAMES = ['Back foot', 'Ready', 'Sit (sweep)', 'Front foot', 'Step out'] as const;
-export const GATE_LABELS = ['BACK', 'SIT', 'FRONT', 'STEP'] as const; // shown on the stick, top to bottom
+export const READY = 0;
+export const BACK = 1;
+export const FRONT = 2;
+export const SWEEP = 3;
+export const REVERSE = 4;
+export const STEP = 5;
+export const SIT = SWEEP; // old name
+export const STANCE_NAMES = ['Ready', 'Back foot', 'Front foot', 'Sweep', 'Reverse sweep', 'Step up and hit'] as const;
+export const STANCE_COUNT = STANCE_NAMES.length;
 
 export type StanceCfg = GameConfig['stance'];
 
@@ -25,12 +28,17 @@ export interface StancePose {
   drop: number; // extra hip drop, metres
   lean: number; // torso lean toward the bowler, metres at the shoulders
   wf: number; // weight on the front foot, 0..1
-  line: number; // where the feet point across the line, -1..1, positive toward the off side
+  line: number; // reserved (swing direction offset); zero until swipes arrive
+  open: number; // chest turned toward the bowler, radians, added to body.open
+  hx: number; // hands at rest, from the shoulder centre: along the chest direction (toward the off side),
+  hy: number; //   up (negative is below the shoulders, scaled by body height),
+  hz: number; //   and toward the bowler across the hips
+  blBack: number; // backlift: bat tilted back from vertical toward the keeper, radians
+  blSide: number; // backlift: bat tilted toward the off side (gully), radians
 }
 
 export interface StanceState {
-  gate: number;
-  lineX: number; // left stick sideways travel at the time the gate was last free to change
+  gate: number; // the stance the body is heading for
   pose: StancePose;
   prev: StancePose; // previous tick, for render interpolation only
 }
@@ -38,73 +46,89 @@ export interface StanceState {
 export const clonePose = (p: StancePose): StancePose => ({ ...p });
 
 export function createStance(c: StanceCfg, rightHanded: boolean): StanceState {
-  const pose = targetPose(READY, 0, c, rightHanded);
-  return { gate: READY, lineX: 0, pose, prev: clonePose(pose) };
+  const pose = targetPose(READY, c, rightHanded);
+  return { gate: READY, pose, prev: clonePose(pose) };
 }
 
-// Reads the stick. `ly` is positive up. Zone boundaries along "down" travel d = -ly:
-//   Back | Ready | Sit | Front | Step     at  -rest, +rest, +rest+w, +rest+2w     (w = (1 - rest) / 3)
-// Hysteresis keeps the current gate until the thumb is clearly past the boundary.
-export function selectGate(ly: number, active: number, prev: number, c: StanceCfg): number {
-  if (!active) return READY;
-  const d = -ly;
-  const w = (1 - c.gateRest) / 3;
-  const edges = [-c.gateRest, c.gateRest, c.gateRest + w, c.gateRest + 2 * w];
-  let idx = 0;
-  for (let i = 0; i < edges.length; i++) {
-    const eff = prev > i ? edges[i]! - c.hysteresis : edges[i]! + c.hysteresis;
-    if (d >= eff) idx = i + 1;
-  }
-  return idx;
-}
-
-// Where the feet and body want to be. `off` is toward the off side (screen-left for a right-hander).
-export function targetPose(gate: number, lineX: number, c: StanceCfg, rightHanded: boolean): StancePose {
+// Where the feet and body want to be. Values are written for a right-hander as (toward the off side, toward the bowler).
+export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): StancePose {
   const f = rightHanded ? -1 : 1; // X = f * (distance toward the off side)
   let ff: [number, number];
   let bf: [number, number];
-  let drop = 0;
-  let lean = 0.12;
+  let drop = 0.04;
+  let lean = 0.1;
   let wf = 0.5;
+  let open = 0;
+  let hands: [number, number, number] = [0.1, -0.46, 0.1];
+  let blBack = 0.45;
+  let blSide = 0.12;
+  let bfLift = 0;
   switch (gate) {
-    case BACK:
-      ff = [0.25, -0.05];
-      bf = [-0.05, -c.backStep];
-      drop = 0.05;
-      lean = 0.06;
+    case BACK: // back and across: rear foot goes back toward off stump, weight on it, upright, bat high
+      ff = [0.2, -0.02];
+      bf = [-0.02, -c.backStep];
+      drop = 0.0;
+      lean = 0.02;
       wf = 0.2;
+      open = -0.2;
+      hands = [0.08, -0.3, 0.08];
+      blBack = 0.75;
+      blSide = 0.15;
       break;
-    case SIT:
-      ff = [0.15, c.sitReach];
-      bf = [-0.35, -0.2];
-      drop = c.sitDrop;
+    case FRONT: // stride to the pitch of the ball, head over the knee, bat comes down straight
+      ff = [0.22, c.frontStride];
+      bf = [-0.24, -0.04];
+      drop = 0.12;
       lean = 0.3;
-      wf = 0.65;
+      wf = 0.78;
+      open = -0.1;
+      hands = [0.14, -0.4, 0.14];
+      blBack = 0.5;
+      blSide = 0.1;
+      bfLift = 0.03;
       break;
-    case FRONT:
-      ff = [0.15, c.frontStride];
-      bf = [-0.25, -0.12];
-      drop = 0.1;
-      lean = 0.2;
-      wf = 0.75;
+    case SWEEP: // front foot forward and the back knee down; low and square-on, bat back low
+      ff = [0.1, c.sitReach];
+      bf = [-0.45, -0.1];
+      drop = c.sitDrop;
+      lean = 0.42;
+      wf = 0.62;
+      open = 0.5;
+      hands = [0.2, -0.3, 0.2];
+      blBack = 1.0;
+      blSide = 0.05;
       break;
-    case STEP:
+    case REVERSE: // as the sweep, but turned more toward the bowler, bat held out front and low
+      ff = [0.3, c.sitReach * 0.9];
+      bf = [-0.35, -0.12];
+      drop = c.sitDrop;
+      lean = 0.4;
+      wf = 0.6;
+      open = 0.95;
+      hands = [0.2, -0.3, 0.2];
+      blBack = 0.9;
+      blSide = -0.2;
+      break;
+    case STEP: // down the pitch: long stride, back heel up, bat high
       ff = [0.1, c.stepOut];
       bf = [-0.15, c.stepOut * 0.4];
-      drop = 0.12;
-      lean = 0.22;
-      wf = 0.8;
+      drop = 0.1;
+      lean = 0.25;
+      wf = 0.7;
+      open = -0.1;
+      hands = [0.16, -0.36, 0.14];
+      blBack = 0.9;
+      blSide = 0.1;
+      bfLift = 0.05;
       break;
-    default:
-      ff = [0.22, 0.1];
-      bf = [-0.22, -0.1];
+    default: // READY: shoulder-width, parallel to the crease, knees soft, weight even, bat low behind the back foot
+      ff = [0.2, 0.08];
+      bf = [-0.22, -0.06];
   }
-  let ffx = f * ff[0];
-  let bfx = f * bf[0];
-  // The stick's horizontal travel slides the working foot sideways (across to leg, or out to off).
-  if (gate === BACK) bfx += lineX * c.lineReach;
-  else if (gate !== READY) ffx += lineX * c.lineReach;
-  return { ffx, ffz: ff[1], bfx, bfz: bf[1], ffLift: 0, bfLift: 0, drop, lean, wf, line: gate === READY ? 0 : Math.max(-1, Math.min(1, rightHanded ? -lineX : lineX)) };
+  return {
+    ffx: f * ff[0], ffz: ff[1], bfx: f * bf[0], bfz: bf[1], ffLift: 0, bfLift, drop, lean, wf, line: 0, open,
+    hx: hands[0], hy: hands[1], hz: hands[2], blBack, blSide,
+  };
 }
 
 const approach = (cur: number, target: number, maxDelta: number) => {
@@ -138,25 +162,32 @@ function moveFoot(p: StancePose, which: 'ff' | 'bf', tx: number, tz: number, spe
   }
 }
 
-// One tick: pick the gate from the stick, then move the body toward that stance at limited speeds.
-// While `locked` (a swing is under way) the feet stay planted: the gate and line cannot change.
-export function stepStance(st: StanceState, ly: number, lx: number, active: number, dt: number, c: StanceCfg, rightHanded: boolean, locked = false): void {
+// One tick: take the stance the player has selected, then move the body toward it at limited speeds.
+// While `locked` (a swing is under way) the feet stay planted: the stance cannot change.
+export function stepStance(st: StanceState, sel: number, dt: number, c: StanceCfg, rightHanded: boolean, locked = false): void {
   Object.assign(st.prev, st.pose);
-  if (!locked) {
-    st.gate = selectGate(ly, active, st.gate, c);
-    st.lineX = active ? lx : 0;
-  }
-  const t = targetPose(st.gate, st.lineX, c, rightHanded);
+  if (!locked && sel >= 0 && sel < STANCE_COUNT) st.gate = sel;
+  const t = targetPose(st.gate, c, rightHanded);
   const p = st.pose;
   moveFoot(p, 'ff', t.ffx, t.ffz, c.footSpeed, dt, 0.15);
   moveFoot(p, 'bf', t.bfx, t.bfz, c.footSpeed, dt, 0.15);
   p.drop = approach(p.drop, t.drop, c.hipSpeed * dt);
   p.lean = approach(p.lean, t.lean, c.leanSpeed * dt);
   p.wf = approach(p.wf, t.wf, c.weightSpeed * dt);
-  p.line = approach(p.line, t.line, 4 * dt);
+  p.open = approach(p.open, t.open, c.turnSpeed * dt);
+  p.blBack = approach(p.blBack, t.blBack, c.turnSpeed * dt);
+  p.blSide = approach(p.blSide, t.blSide, c.turnSpeed * dt);
+  p.hx = approach(p.hx, t.hx, c.handSpeed * dt);
+  p.hy = approach(p.hy, t.hy, c.handSpeed * dt);
+  p.hz = approach(p.hz, t.hz, c.handSpeed * dt);
+  p.line = 0;
 }
 
 export function lerpPose(a: StancePose, b: StancePose, k: number): StancePose {
   const l = (x: number, y: number) => x + (y - x) * k;
-  return { ffx: l(a.ffx, b.ffx), ffz: l(a.ffz, b.ffz), bfx: l(a.bfx, b.bfx), bfz: l(a.bfz, b.bfz), ffLift: l(a.ffLift, b.ffLift), bfLift: l(a.bfLift, b.bfLift), drop: l(a.drop, b.drop), lean: l(a.lean, b.lean), wf: l(a.wf, b.wf), line: l(a.line, b.line) };
+  return {
+    ffx: l(a.ffx, b.ffx), ffz: l(a.ffz, b.ffz), bfx: l(a.bfx, b.bfx), bfz: l(a.bfz, b.bfz), ffLift: l(a.ffLift, b.ffLift), bfLift: l(a.bfLift, b.bfLift),
+    drop: l(a.drop, b.drop), lean: l(a.lean, b.lean), wf: l(a.wf, b.wf), line: l(a.line, b.line), open: l(a.open, b.open),
+    hx: l(a.hx, b.hx), hy: l(a.hy, b.hy), hz: l(a.hz, b.hz), blBack: l(a.blBack, b.blBack), blSide: l(a.blSide, b.blSide),
+  };
 }

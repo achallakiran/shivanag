@@ -1,5 +1,5 @@
 import type { GameConfig } from '../config/defaults';
-import { BACK, FRONT, READY, SIT, STEP } from './stance';
+import { BACK, FRONT, READY, REVERSE, STEP, SWEEP } from './stance';
 import type { Vec } from './skeleton';
 
 // The bat is a rod swung about the shoulders in a "swing plane". The plane is the vertical plane
@@ -34,8 +34,10 @@ export function planeYaw(gate: number, line: number, c: GameConfig['swing']): nu
   switch (gate) {
     case BACK:
       return c.yawBack + c.gainBack * line;
-    case SIT:
+    case SWEEP:
       return c.yawSit + c.gainSit * line;
+    case REVERSE:
+      return -c.yawSit + c.gainSit * line;
     case FRONT:
       return c.yawFront + c.gainFront * line;
     case STEP:
@@ -48,10 +50,12 @@ export function planeYaw(gate: number, line: number, c: GameConfig['swing']): nu
 
 // Bat pose for a given shoulder centre. `rest` is the hands' resting offset from the shoulders (backlift
 // hands); `armLen` is how far the hands reach along the rod when the arms are extended.
-export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number): BatFrame {
+export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number, blBack = 0.39, blSide = 0): BatFrame {
   const f = rightHanded ? -1 : 1; // X sign of "toward the off side"
   const fh: Vec = [f * Math.sin(yaw), 0, Math.cos(yaw)]; // horizontal, the direction of the shot
-  const a = unit(add([0, 0.93, 0], mul(fh, -0.36))); // backlift direction: up and back
+  // Backlift direction: tilted back from vertical toward the keeper, and sideways toward the off side.
+  const off = mul(cross([0, 1, 0], fh), f); // horizontal, toward the off side, across the shot direction
+  const a = unit(add(add([0, 1, 0], mul(fh, -Math.tan(blBack))), mul(off, Math.tan(blSide))));
   const b = unit(add(fh, mul(a, -dot(a, fh)))); // forward, perpendicular to a within the plane
   const ca = Math.cos(alpha);
   const sa = Math.sin(alpha);

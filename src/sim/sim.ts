@@ -39,9 +39,9 @@ export function createSimState(c: GameConfig['stance'] = DEFAULT_CONFIG.stance, 
 
 export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): void {
   const rh = cfg.rightHanded;
-  // Right stick: the circle swing. Left stick: stance (locked while a swing is under way).
+  // Stance buttons choose the stance (locked while a swing is under way); the swing input is a placeholder until swipes.
   stepSwing(s.swing, f, s.stance, dt, cfg.swing, rh);
-  stepStance(s.stance, f.ly, f.lx, f.la, dt, cfg.stance, rh, s.swing.locked === 1);
+  stepStance(s.stance, f.sel, dt, cfg.stance, rh, s.swing.locked === 1);
   // the swing plane follows the stance as it settles
   s.swing.yaw = planeYaw(s.stance.gate, s.stance.pose.line, cfg.swing);
 
@@ -64,7 +64,7 @@ export function hashSim(s: SimState): string {
   const p = s.stance.pose;
   const sw = s.swing;
   const k = s.shot;
-  const nums = [sw.alpha, sw.omega, sw.theta, sw.engaged, sw.yaw, s.stance.gate, s.stance.lineX, p.line, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length, b.hit, b.maxY, k.state, k.speed, k.launch, k.dir, k.s, k.lat];
+  const nums = [sw.alpha, sw.omega, sw.theta, sw.engaged, sw.yaw, s.stance.gate, p.open, p.hx, p.hy, p.hz, p.blBack, p.blSide, p.line, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length, b.hit, b.maxY, k.state, k.speed, k.launch, k.dir, k.s, k.lat];
   const buf = new DataView(new ArrayBuffer(8 * nums.length + 4));
   nums.forEach((v, i) => buf.setFloat64(i * 8, v, true));
   buf.setUint32(8 * nums.length, s.tick, true);

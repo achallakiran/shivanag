@@ -1,11 +1,11 @@
 import { EMPTY_FRAME, type InputFrame } from './types';
 
-// [tick, lx, ly, la, rx, ry, ra]. Rows are stored only when the input changes.
-export type FrameRow = [number, number, number, number, number, number, number];
+// [tick, sel, rx, ry, ra]. Rows are stored only when the input changes.
+export type FrameRow = [number, number, number, number, number];
 
 export interface Recording {
   format: 'voxel-cricket-input';
-  version: 1;
+  version: 2;
   stepHz: number;
   ticks: number; // number of steps covered
   truncated: boolean; // true if the cap was hit, so the recording is incomplete
@@ -13,7 +13,7 @@ export interface Recording {
 }
 
 const same = (a: InputFrame, b: InputFrame) =>
-  a.lx === b.lx && a.ly === b.ly && a.la === b.la && a.rx === b.rx && a.ry === b.ry && a.ra === b.ra;
+  a.sel === b.sel && a.rx === b.rx && a.ry === b.ry && a.ra === b.ra;
 
 export class InputRecorder {
   private frames: FrameRow[] = [];
@@ -33,14 +33,14 @@ export class InputRecorder {
       this.truncated = true;
       return;
     }
-    this.frames.push([tick, f.lx, f.ly, f.la, f.rx, f.ry, f.ra]);
+    this.frames.push([tick, f.sel, f.rx, f.ry, f.ra]);
     this.last = { ...f };
   }
 
   toRecording(): Recording {
     return {
       format: 'voxel-cricket-input',
-      version: 1,
+      version: 2,
       stepHz: this.stepHz,
       ticks: this.ticks,
       truncated: this.truncated,
@@ -60,7 +60,7 @@ export class InputReplayer {
     const rows = this.rec.frames;
     while (this.i < rows.length && rows[this.i][0] <= tick) {
       const r = rows[this.i++];
-      this.cur = { lx: r[1], ly: r[2], la: r[3] as 0 | 1, rx: r[4], ry: r[5], ra: r[6] as 0 | 1 };
+      this.cur = { sel: r[1], rx: r[2], ry: r[3], ra: r[4] as 0 | 1 };
     }
     return this.cur;
   }

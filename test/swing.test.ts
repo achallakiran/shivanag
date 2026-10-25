@@ -2,13 +2,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 import type { InputFrame } from '../src/input/types';
-import { createStance, FRONT, READY, BACK } from '../src/sim/stance';
+import { createStance, FRONT, READY, BACK, REVERSE, SWEEP } from '../src/sim/stance';
 import { createSwing, stepSwing, thumbAngle } from '../src/sim/swing';
 import { planeYaw } from '../src/sim/bat';
 
 const c = DEFAULT_CONFIG.swing;
 const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
-const frame = (rx: number, ry: number, ra: 0 | 1 = 1): InputFrame => ({ lx: 0, ly: 0, la: 0, rx, ry, ra });
+const frame = (rx: number, ry: number, ra: 0 | 1 = 1): InputFrame => ({ sel: 0, rx, ry, ra });
 const stance = () => createStance(DEFAULT_CONFIG.stance, true);
 
 // thumb at angle `a` around the circle for a right-hander: up, left, down, right (counter-clockwise)
@@ -111,5 +111,6 @@ test('the swing plane follows the stance and the line', () => {
   assert.equal(planeYaw(FRONT, 0, c), c.yawFront);
   assert.ok(planeYaw(FRONT, 1, c) > planeYaw(FRONT, -1, c));
   assert.ok(planeYaw(BACK, 1, c) > 0.8 && planeYaw(BACK, -1, c) < -0.8, 'back foot can cut or pull');
+  assert.equal(planeYaw(REVERSE, 0, c), -planeYaw(SWEEP, 0, c), 'reverse sweep goes the other way');
   assert.equal(planeYaw(READY, 0, c), c.yawReady);
 });

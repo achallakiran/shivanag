@@ -11,7 +11,7 @@ import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine';
 import type { SimState } from '../sim/sim';
 import type { GameConfig } from '../config/defaults';
 import { JOINTS, JOINT_NAMES, bodyDims, facingVec, solvePose, type JointName, type Pose, type Vec } from '../sim/skeleton';
-import { CAMERAS } from './cameras';
+import { CAMERAS, fovForFill } from './cameras';
 import { DEFAULT_CONFIG } from '../config/defaults';
 import { createStance, lerpPose } from '../sim/stance';
 
@@ -23,6 +23,7 @@ export interface ViewState {
   camera: number; // index into CAMERAS
   skeleton: boolean;
   rightHanded: boolean;
+  size: number; // player size multiplier for the framing (1 = default)
   guide: boolean; // yellow line on the ground: the direction the bat swings through for the current stance and line
 }
 
@@ -210,7 +211,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   const markMat = mat(scene, 'mark', 1, 0.35, 0.1, true);
   const machineBody = box(scene, 'machine', 0.5, 0.9, 0.5, 0, 0.45, RELEASE_Z + 0.6, dark);
   const machineLight = CreateSphere('machineLight', { diameter: 0.22, segments: 8 }, scene);
-  machineLight.position.set(0, RELEASE_Y - 0.3, RELEASE_Z + 0.2);
+  machineLight.position.set(1.6, RELEASE_Y - 0.3, RELEASE_Z + 0.2); // beside the pitch so it never blocks the low broadcast camera
   const lightOff = mat(scene, 'lightOff', 0.3, 0.3, 0.3, true);
   const lightCue = mat(scene, 'lightCue', 1, 0.75, 0.1, true);
   machineLight.material = lightOff;
@@ -239,7 +240,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   let trailTick = -1;
   let lastCount = -1;
 
-  let state: ViewState = { camera: 0, skeleton: true, rightHanded: true, guide: true };
+  let state: ViewState = { camera: 0, skeleton: true, rightHanded: true, guide: false, size: 1 };
   const guideMat = mat(scene, 'guide', 1, 0.9, 0.2, true);
   const guide = CreateBox('guide', { size: 1 }, scene);
   guide.material = guideMat;
@@ -258,8 +259,9 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     const batAlpha = sw.prevAlpha + (sw.alpha - sw.prevAlpha) * alpha;
     const yaw = sw.prevYaw + (sw.yaw - sw.prevYaw) * alpha;
     const rh = state.rightHanded;
-    const f = facingVec(rh, body.open);
-    const pose = solvePose({ stance: lerpPose(s.stance.prev, s.stance.pose, alpha), alpha: batAlpha, yaw, rightHanded: rh, baseZ: BAT_Z }, body);
+    const sp = lerpPose(s.stance.prev, s.stance.pose, alpha);
+    const f = facingVec(rh, body.open + sp.open);
+    const pose = solvePose({ stance: sp, alpha: batAlpha, yaw, rightHanded: rh, baseZ: BAT_Z }, body);
     lastPose = pose;
     for (const p of parts) p.place(pose, f, D.scale);
     if (state.skeleton) {
@@ -318,7 +320,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     const tgt: Vec = [base.target[0] * mx, base.target[1], base.target[2]];
     cam.position.copyFrom(toWorld(pos));
     cam.setTarget(toWorld(tgt));
-    cam.fov = base.fov;
+    cam.fov = base.fill ? fovForFill(pos, tgt, base.fill * state.size) : base.fov;
   };
 
   return {
@@ -327,6 +329,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     setView(v) {
       state = { ...state, ...v };
       state.camera = ((state.camera % CAMERAS.length) + CAMERAS.length) % CAMERAS.length;
+      state.size = Math.max(0.6, Math.min(1.4, state.size));
       setSkeletonVisible(state.skeleton);
       return state;
     },
