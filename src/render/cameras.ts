@@ -16,7 +16,8 @@ const CREASE_Z = -20.12 / 2 + 1.22;
 
 export const CAMERAS: CamSpec[] = [
   // Like the console cricket games: behind the bowler's stumps, raised, long lens, batter large and central.
-  { id: 'broadcast', label: 'Broadcast (behind bowler)', pos: [0.2, 3.4, 11.8], target: [0.3, 0.95, CREASE_Z], fov: 0.22 },
+  { id: 'broadcast', label: 'Broadcast (behind bowler)', pos: [0.2, 3.0, 12.5], target: [0.3, 0.9, CREASE_Z], fov: 0.155 },
+  { id: 'close', label: 'Close (mid-pitch)', pos: [0.2, 2.1, 2.5], target: [0.3, 0.9, CREASE_Z], fov: 0.3 },
   { id: 'high', label: 'Behind bowler, high', pos: [0.2, 6.5, 14.5], target: [0.3, 0.5, CREASE_Z], fov: 0.4 },
   { id: 'stump', label: 'Stump level', pos: [0.1, 0.55, 11.2], target: [0.3, 0.9, CREASE_Z], fov: 0.3 },
   { id: 'behind', label: 'Behind batter', pos: [0.1, 2.0, CREASE_Z - 4.5], target: [0, 1.0, CREASE_Z + 6], fov: 0.65 },

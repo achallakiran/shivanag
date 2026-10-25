@@ -185,7 +185,7 @@ for (const [pname, bx, by] of poses) {
     stepSim(sim, { lx: 0, ly: 0, la: 0, rx: 0, ry: 0, ra: 0 }, dt, cfg);
     world.update(sim, 1);
     if (sim.ball.active && sim.ball.age >= marks[next]!) {
-      for (const cam of [0, 6]) {
+      for (const cam of [0, 1]) {
         world.setView({ camera: cam });
         world.update(sim, 1);
         const shot = render(world, engine);

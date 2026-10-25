@@ -34,13 +34,13 @@ test('batter follows the sim and every camera and handedness renders', () => {
   world.update(s, 1);
   assert.ok(Math.abs(world.pose().pelvis[0] - 2.5) < 1e-9); // right-hander stands 0.5 m to the leg side
   for (const rh of [true, false]) {
-    for (let c = 0; c < 8; c++) {
+    for (let c = 0; c < 9; c++) {
       world.setView({ camera: c, rightHanded: rh, skeleton: c % 2 === 0 });
       world.update(s, 1);
       world.scene.render();
     }
   }
-  assert.equal(world.setView({ camera: 9 }).camera, 1);
+  assert.equal(world.setView({ camera: 10 }).camera, 1);
   world.scene.dispose();
   engine.dispose();
 });

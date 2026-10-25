@@ -10,7 +10,7 @@ Hard requirements:
 
 ## Status
 
-**v0.3.0, Phase A (ball and bowling machine).** A bowling machine at the bowler's end delivers a ball
+**v0.3.1, Phase A (ball and bowling machine).** A bowling machine at the bowler's end delivers a ball
 every few seconds: a cue warning, then release. The ball has real size and mass-free physics (gravity,
 air drag, spin force, bounce with grip and slip, rolling). It is drawn larger with a trail, shadow and a
 bounce marker. Speed, line and length are in Menu tuning (`machine.*`). The batter is still a placeholder
