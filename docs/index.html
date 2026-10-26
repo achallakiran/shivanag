@@ -602,7 +602,7 @@ class Snake {
     this.t = 1; this.dur = 0.2; this.wish = null;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
-    this.mv = 0; this.idle = 0; this.lift = 0; this.phase = 0; this.hood = 1;
+    this.mv = 0; this.idle = 0; this.lift = 0; this.coil = 0; this.phase = 0; this.hood = 1;
     this.head = { x: b.x, y: top, z: b.z };
     this.meshes = [];
     this._build();
@@ -760,6 +760,7 @@ class Snake {
     this.idle = moving ? 0 : this.idle + dt;
     const liftT = (this.idle > .45 && !this.climb) ? 1 : 0;
     this.lift += (liftT - this.lift) * (1 - Math.exp(-dt * 4.5));
+    this.coil += (liftT - this.coil) * (1 - Math.exp(-dt * 3.2));
     this.climbF += ((this.climb ? 1 : 0) - this.climbF) * (1 - Math.exp(-dt * 9));
     this.phase += dt * (7 * this.mv);
     this.hood += ((moving ? .52 : 1) - this.hood) * (1 - Math.exp(-dt * 7));
@@ -799,7 +800,18 @@ class Snake {
       const wv = Math.sin(this.phase - i * 1.1) * amp;
       x += -tz * wv; z += tx * wv;
       const r = sg.s / 2;
-      const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
+      let lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
+      const cl = this.coil;
+      if (cl > .001) { // idle: coil up around the raised head, cobra style
+        const k = Math.max(0, i - 1), fwd = this.heading + Math.PI;
+        let ang = fwd; for (let j = 0; j < k; j++) ang += .62 / (.5 + .1 * j);
+        let cx, cz, cy;
+        if (i === 0) { cx = this.head.x + Math.sin(fwd) * .24; cz = this.head.z + Math.cos(fwd) * .24; cy = .3; }
+        else { const rr = i === 1 ? .46 : .5 + .1 * k; cx = this.head.x + Math.sin(ang) * rr; cz = this.head.z + Math.cos(ang) * rr; cy = i === 1 ? .06 : 0; }
+        const e = cl * cl * (3 - 2 * cl);
+        x = lerp(x, cx, e); z = lerp(z, cz, e);
+        lf = lf * (1 - e) + cy * e;
+      }
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
