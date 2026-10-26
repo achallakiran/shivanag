@@ -5,24 +5,24 @@ import type { PoseData } from './rig';
 const merge = (base: PoseData, o: Partial<PoseData>): PoseData => ({ ...base, ...o });
 
 export const READY_GROUNDED: PoseData = {
-  root: { x: 0, z: 0, yaw: 25 },
+  root: { x: 0, z: 0, yaw: 60 },
   pelvis: [10, 0, 0],
-  spine: [30, 22, 0],
-  head: [-36, -47, 0],
-  hipL: [50, -20, -9],
-  hipR: [44, -20, 9],
-  kneeL: 70,
-  kneeR: 68,
+  spine: [18, -15, 0],
+  head: [-28, -45, 0],
+  hipL: [50, -10, -9],
+  hipR: [46, -10, 9],
+  kneeL: 42,
+  kneeR: 40,
   ankleL: 0,
   ankleR: 0,
-  bat: { pos: [0.06, 0.08, 0.3], az: 125, el: -60, roll: 0 },
+  bat: { pos: [0.06, 0.08, 0.3], az: 90, el: -60, roll: 0 },
   elbowOut: 0.3,
 };
 
 // Bat lifted: up and back toward the slips, hands low by the hip.
 export const READY_LIFTED: PoseData = merge(READY_GROUNDED, {
-  bat: { pos: [0.0, 0.0, 0.3], az: 150, el: 55, roll: 0 },
-  elbowOut: 0.5,
+  bat: { pos: [0.02, 0, 0.36], az: 89, el: 55, roll: 0 },
+  elbowOut: 0.53,
 });
 
 // Back foot: the rear foot goes back and across, weight back, more side-on and upright, bat high.
@@ -35,7 +35,8 @@ export const BACK: PoseData = merge(READY_LIFTED, {
   hipR: [-8, -30, 6],
   kneeL: 44,
   kneeR: 28,
-  bat: { pos: [0.0, 0.08, 0.28], az: 165, el: 68, roll: 0 },
+  bat: { pos: [0.21, 0.06, 0.32], az: 162, el: 67, roll: 0 },
+  elbowOut: 0.49,
 });
 
 // Front foot: a long stride toward the pitch of the ball, head over the front knee, bat coming down straight.
@@ -49,7 +50,8 @@ export const FRONT: PoseData = merge(READY_LIFTED, {
   kneeL: 60,
   kneeR: 34,
   ankleR: -25,
-  bat: { pos: [0.02, 0.06, 0.34], az: 25, el: -35, roll: 0 },
+  bat: { pos: [0.04, 0.1, 0.32], az: 25, el: -35, roll: 0 },
+  elbowOut: 0.49,
 });
 
 // Sweep: the front foot well forward, the back knee down; low and square-on, bat back and low.
@@ -64,7 +66,8 @@ export const SWEEP: PoseData = merge(READY_LIFTED, {
   kneeR: 100,
   ankleR: -20,
   kneeDown: 'R',
-  bat: { pos: [0.02, 0.0, 0.32], az: 150, el: 5, roll: 0 },
+  bat: { pos: [0.09, -0.04, 0.35], az: 149, el: 5, roll: 0 },
+  elbowOut: 0.46,
 });
 
 // Reverse sweep: as the sweep but turned more toward the bowler, bat held out in front.
@@ -72,7 +75,8 @@ export const REVERSE: PoseData = merge(SWEEP, {
   root: { x: 0, z: 0.5, yaw: 10 },
   spine: [34, 22, 0],
   head: [-44, -32, 0],
-  bat: { pos: [0.0, 0.0, 0.3], az: 25, el: -10, roll: 0 },
+  bat: { pos: [-0.04, 0.09, 0.39], az: 24, el: -9, roll: 0 },
+  elbowOut: 0.69,
 });
 
 // Step up and hit: down the pitch, long stride, back heel up, bat high.
@@ -86,10 +90,11 @@ export const STEP: PoseData = merge(READY_LIFTED, {
   kneeL: 42,
   kneeR: 30,
   ankleR: -35,
-  bat: { pos: [0.0, 0.05, 0.3], az: 160, el: 62, roll: 0 },
+  bat: { pos: [0.21, 0.01, 0.33], az: 158, el: 61, roll: 0 },
+  elbowOut: 0.6,
 });
 
-export const POSES = { READY_GROUNDED, READY_LIFTED, BACK, FRONT, SWEEP, REVERSE, STEP };
+export const POSES = { READY_LIFTED, BACK, FRONT, SWEEP, REVERSE, STEP };
 
 const mix = (a: number, b: number, t: number) => a + (b - a) * t;
 const mix3 = (a: [number, number, number], b: [number, number, number], t: number): [number, number, number] => [mix(a[0], b[0], t), mix(a[1], b[1], t), mix(a[2], b[2], t)];

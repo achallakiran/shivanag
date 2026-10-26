@@ -36,7 +36,7 @@ const D2R = Math.PI / 180;
 export interface Joints {
   head: Vector3; pelvis: Vector3;
   shoulderL: Vector3; shoulderR: Vector3; elbowL: Vector3; elbowR: Vector3; wristL: Vector3; wristR: Vector3;
-  kneeL: Vector3; kneeR: Vector3; ankleL: Vector3; ankleR: Vector3;
+  hipL: Vector3; hipR: Vector3; kneeL: Vector3; kneeR: Vector3; ankleL: Vector3; ankleR: Vector3;
   batTop: Vector3; batToe: Vector3;
   gripError: number; // how far the hands are from the handle (m); 0 when the arms reach
 }
@@ -203,6 +203,7 @@ export function createBatsman(scene: Scene, material: Material): Batsman {
     return {
       head: toWorld(headN, new Vector3(0, 0.12, 0)), pelvis: toWorld(pelvisN, new Vector3(0, 0, 0)),
       shoulderL: shL, shoulderR: shR, elbowL: aL.mid, elbowR: aR.mid, wristL: aL.end, wristR: aR.end,
+      hipL: toWorld(legL.hip, Vector3.Zero()), hipR: toWorld(legR.hip, Vector3.Zero()),
       kneeL: toWorld(legL.knee, Vector3.Zero()), kneeR: toWorld(legR.knee, Vector3.Zero()),
       ankleL: toWorld(legL.ankle, Vector3.Zero()), ankleR: toWorld(legR.ankle, Vector3.Zero()),
       batTop: toWorld(batN, Vector3.Zero()), batToe: toWorld(batN, new Vector3(0, -0.95, 0)),

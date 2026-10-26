@@ -75,3 +75,24 @@ test('the lifted bat is behind and above the hands, the grounded bat is down by 
   const down = man.apply(READY_GROUNDED);
   assert.ok(down.batToe.y < 0.1, 'toe on the ground');
 });
+
+import { clearance } from '../src/voxel/clearance';
+import { swingPose, SWING_TOTAL } from '../src/game/swing';
+
+test('the bat and hands never pass through the body: every stance and every frame of every swing', () => {
+  const bad: string[] = [];
+  const check = (label: string, pose: Parameters<typeof man.apply>[0]) => {
+    const j = man.apply(pose);
+    if (j.gripError > 0.03) bad.push(`${label}: hands off the handle by ${j.gripError.toFixed(3)}`);
+    const g = clearance(j)[0]!;
+    if (g.gap < -0.01) bad.push(`${label}: ${g.what} ${(g.gap * 100).toFixed(1)}cm`);
+  };
+  STANCES.forEach((s, i) => {
+    check(`${s.name} stance`, s.pose);
+    for (const toContact of [0.06, 0.18, 0.28]) {
+      for (let t = 0; t <= toContact + SWING_TOTAL; t += 0.02) check(`${s.name} swing(${toContact}) t=${t.toFixed(2)}`, swingPose(i, t, toContact, 0));
+    }
+    for (const dir of [-80, 80]) for (let t = 0; t <= 0.2 + SWING_TOTAL; t += 0.05) check(`${s.name} dir ${dir} t=${t.toFixed(2)}`, swingPose(i, t, 0.2, dir));
+  });
+  assert.deepEqual(bad.slice(0, 12), []);
+});

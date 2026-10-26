@@ -4,29 +4,30 @@ import { lerpPose, STANCES } from '../voxel/poses';
 // Swing clips. Each stance has a contact pose (the bat meeting the ball) and a follow-through pose, both authored as
 // data. A swing plays: stance pose -> contact (taking `toContact` seconds) -> follow-through -> hold -> back to stance.
 type BatKey = PoseData['bat'];
-interface Key { bat: BatKey; spine?: [number, number, number]; head?: [number, number, number]; yaw?: number; elbowOut?: number }
+// spine is the change from the stance: [pitch, yaw] in degrees
+export interface Key { bat: BatKey; spine?: [number, number]; head?: [number, number, number]; yaw?: number; elbowOut?: number }
 
 const bat = (pos: [number, number, number], az: number, el: number, roll = 0): BatKey => ({ pos, az, el, roll });
 
-const CLIPS: Array<{ contact: Key; follow: Key }> = [
+export const CLIPS: Array<{ contact: Key; follow: Key }> = [
   // Ready: a straight, controlled drive
-  { contact: { bat: bat([0.0, 0.05, 0.38], 10, -75), spine: [38, 14, 0], elbowOut: 0.3 }, follow: { bat: bat([0.05, 0.15, 0.4], -15, 40), spine: [24, 5, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([-0.08, 0.19, 0.31], 10, -74), spine: [10, -7], elbowOut: 0.29 }, follow: { bat: bat([-0.02, 0.25, 0.35], -16, 40), spine: [-5, -19], elbowOut: 0.52 } },
   // Back foot: bat comes down across the line
-  { contact: { bat: bat([0.08, 0.1, 0.36], 50, -65), spine: [28, 25, 0], elbowOut: 0.35 }, follow: { bat: bat([0.1, 0.2, 0.4], 100, 25), spine: [20, 35, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([0.11, 0.23, 0.33], 49, -65), spine: [5, 4], elbowOut: 0.37 }, follow: { bat: bat([0.1, 0.2, 0.4], 100, 25), spine: [-4, 10], elbowOut: 0.5 } },
   // Front foot: long straight drive
-  { contact: { bat: bat([0.02, 0.05, 0.4], 8, -80), spine: [42, 12, 0], elbowOut: 0.25 }, follow: { bat: bat([0.05, 0.15, 0.45], -20, 50), spine: [30, 4, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([0.07, 0.14, 0.37], 8, -80), spine: [8, -8], elbowOut: 0.21 }, follow: { bat: bat([0.05, 0.15, 0.45], -20, 50), spine: [-6, -20], elbowOut: 0.5 } },
   // Sweep: low horizontal arc, bat travelling leg-side
-  { contact: { bat: bat([0.0, 0.05, 0.42], 25, -15), spine: [45, 10, 0], elbowOut: 0.3 }, follow: { bat: bat([-0.05, 0.1, 0.4], -70, 25), spine: [35, -5, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([0.11, 0.04, 0.49], 26, -15), spine: [9, -5], elbowOut: 0.39 }, follow: { bat: bat([0.13, 0.15, 0.59], -68, 25), spine: [3, -15], elbowOut: 0.72 } },
   // Reverse sweep: the same arc the other way
-  { contact: { bat: bat([0.0, 0.05, 0.42], 40, -15, 0), spine: [45, 25, 0], elbowOut: 0.3 }, follow: { bat: bat([0.05, 0.1, 0.4], 130, 25), spine: [35, 35, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([-0.02, 0.06, 0.41], 40, -15), spine: [10, 10], elbowOut: 0.42 }, follow: { bat: bat([0.11, 0.04, 0.45], 129, 24), spine: [3, 25], elbowOut: 0.47 } },
   // Step up and hit: a big hit, bat through high
-  { contact: { bat: bat([0.0, 0.1, 0.42], 8, -65), spine: [40, 12, 0], elbowOut: 0.25 }, follow: { bat: bat([0.0, 0.2, 0.45], -25, 65), spine: [24, 0, 0], elbowOut: 0.5 } },
+  { contact: { bat: bat([0.03, 0.18, 0.38], 8, -65), spine: [9, -8], elbowOut: 0.26 }, follow: { bat: bat([0.01, 0.22, 0.43], -25, 65), spine: [-8, -22], elbowOut: 0.5 } },
 ];
 
-const withKey = (base: PoseData, k: Key, dir: number): PoseData => ({
+export const withKey = (base: PoseData, k: Key, dir: number): PoseData => ({
   ...base,
   bat: k.bat,
-  spine: k.spine ? [k.spine[0], k.spine[1] + dir, k.spine[2]] : base.spine,
+  spine: k.spine ? [base.spine[0] + k.spine[0], base.spine[1] + k.spine[1] + dir, base.spine[2]] : base.spine,
   head: k.head ?? base.head,
   elbowOut: k.elbowOut ?? base.elbowOut,
 });
@@ -44,8 +45,8 @@ export const SWING_TOTAL = FOLLOW_SEC + HOLD_SEC + RECOVER_SEC;
 export function swingPose(stance: number, elapsed: number, toContact: number, dir = 0): PoseData {
   const base = STANCES[stance]!.pose;
   const clip = CLIPS[stance]!;
-  const contact = withKey(base, clip.contact, dir * 0.4);
-  const follow = withKey(base, clip.follow, dir * 0.6);
+  const contact = withKey(base, clip.contact, Math.max(-90, Math.min(90, dir)) * 0.04);
+  const follow = withKey(base, clip.follow, Math.max(-90, Math.min(90, dir)) * 0.05);
   if (elapsed <= 0) return base;
   if (elapsed < toContact) {
     // the bat accelerates into the ball: slow start, fast finish
