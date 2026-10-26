@@ -1,0 +1,9 @@
+{
+  "name": "shivanag",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shivanag - voxel naga stealth-puzzle game (M0-M2 look & feel prototype)",
+  "type": "module",
+  "scripts": { "build": "node build.mjs" },
+  "dependencies": { "babylonjs": "^9.32.0" }
+}

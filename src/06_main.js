@@ -1,0 +1,202 @@
+/* Shivanag — main: engine, lighting, post, quality tiers, input, HUD */
+(function () { try {
+  const canvas = document.getElementById('c'); window.__canvasEl = canvas;
+  const engine = new B.Engine(canvas, true, { stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }, true);
+  const scene = new B.Scene(engine);
+  scene.clearColor = new B.Color4(.2, .14, .22, 1);
+  scene.ambientColor = new B.Color3(.3, .3, .3);
+  const ip = scene.imageProcessingConfiguration;
+  ip.isEnabled = true; ip.toneMappingEnabled = true; ip.toneMappingType = B.ImageProcessingConfiguration.TONEMAPPING_ACES;
+  ip.exposure = .95; ip.contrast = 1.15;
+
+  // ---- sunset backdrop ----
+  const bgTex = new B.DynamicTexture('bg', { width: 8, height: 256 }, scene, false);
+  { const g = bgTex.getContext(); const gr = g.createLinearGradient(0, 0, 0, 256);
+    gr.addColorStop(0, '#3a2a58'); gr.addColorStop(.35, '#8a4a7a'); gr.addColorStop(.7, '#d9798a'); gr.addColorStop(1, '#f2b88a');
+    g.fillStyle = gr; g.fillRect(0, 0, 8, 256); bgTex.update(); }
+  const bg = new B.Layer('bg', null, scene, true); bg.texture = bgTex;
+
+  // ---- world ----
+  const level = buildLevel();
+
+  // ---- lights ----
+  const hemi = new B.HemisphericLight('hemi', new B.Vector3(.2, 1, .1), scene);
+  hemi.diffuse = new B.Color3(.76, .8, .97); hemi.groundColor = new B.Color3(.56, .42, .42); hemi.specular = B.Color3.Black(); hemi.intensity = .55;
+  const sun = new B.DirectionalLight('sun', new B.Vector3(-.75, -1, -.45).normalize(), scene);
+  sun.diffuse = new B.Color3(1, .86, .66); sun.specular = new B.Color3(.3, .24, .18); sun.intensity = 1.5;
+  sun.position = new B.Vector3(level.W / 2 + 40, 50, level.D / 2 + 25);
+  sun.shadowMinZ = 1; sun.shadowMaxZ = 160;
+
+  const bevel = makeBevelTexture(scene);
+  const voxMat = new B.StandardMaterial('vox', scene);
+  voxMat.diffuseTexture = bevel; voxMat.specularColor = new B.Color3(.05, .05, .05);
+  voxMat.backFaceCulling = false; voxMat.maxSimultaneousLights = 8;
+  // see-through blocks: opt-in (lazy plugin) so a GPU that dislikes the extra shader can never break startup
+  const occ = { a: new B.Vector4(), b: new B.Vector4(), on: false, p: null };
+  function setOcc(v) {
+    try {
+      if (v && !occ.p) occ.p = new OccPlugin(voxMat);
+      if (occ.p) occ.p.on = v;
+      occ.on = v && !!occ.p;
+      if (occ.on) setTimeout(() => { // if the GPU rejects the shader, switch it back off instead of leaving blocks broken
+        try { const ef = voxMat.getEffect && voxMat.getEffect(); if (ef && ef.getCompilationError && ef.getCompilationError()) { occ.p.on = false; occ.on = false; seeBtn.textContent = 'See-through: Unsupported'; } } catch (e) { }
+      }, 1200);
+    } catch (e) { occ.on = false; }
+    seeBtn.textContent = 'See-through: ' + (occ.on ? 'On' : 'Off');
+  }
+  const props = buildProps(scene, level);
+  const meshes = meshWorld(level.world, scene, voxMat, props.waterMat);
+  meshes.solid.freezeWorldMatrix();
+
+  // ---- snake + camera ----
+  const snake = new Snake(scene, level.world, level.spawnCells, level.spawnTop, bevel);
+  const rig = new CamRig(scene, engine, { W: level.W, D: level.D });
+  rig.setPreset(1);
+
+  scene.materials.forEach(m => { if (m.maxSimultaneousLights !== undefined) m.maxSimultaneousLights = 8; });
+
+  // ---- post: tilt-shift + grade + vignette ----
+  B.Effect.ShadersStore['shivPostFragmentShader'] = `
+    precision highp float;
+    varying vec2 vUV;
+    uniform sampler2D textureSampler;
+    uniform vec2 texelSize;
+    uniform float tilt;
+    uniform float vig;
+    void main(void){
+      vec2 uv = vUV;
+      vec3 c = texture2D(textureSampler, uv).rgb;
+      float d = abs(uv.y - 0.5);
+      float amt = smoothstep(0.26, 0.7, d) * tilt;
+      if (amt > 0.002) {
+        vec3 acc = c; float wsum = 1.0;
+        for (int i = 0; i < 12; i++) {
+          float fi = float(i);
+          float a = fi * 2.399963;
+          float r = sqrt((fi + 0.5) / 12.0) * amt * 5.5;
+          vec2 o = vec2(cos(a), sin(a)) * r * texelSize;
+          acc += texture2D(textureSampler, uv + o).rgb; wsum += 1.0;
+        }
+        c = acc / wsum;
+      }
+      float l = dot(c, vec3(0.299, 0.587, 0.114));
+      c = mix(vec3(l), c, 1.10);
+      c *= vec3(1.03, 1.0, 0.965);
+      float v = smoothstep(0.98, 0.32, length((uv - 0.5) * vec2(1.0, 1.12)));
+      c *= mix(1.0, v, vig);
+      gl_FragColor = vec4(c, 1.0);
+    }`;
+  const post = new B.PostProcess('shiv', 'shivPost', ['texelSize', 'tilt', 'vig'], null, 1.0, rig.cam, B.Texture.BILINEAR_SAMPLINGMODE, engine, false);
+  const pp = { tilt: 1, vig: .55 };
+  post.onApply = (eff) => { eff.setFloat2('texelSize', 1 / post.width, 1 / post.height); eff.setFloat('tilt', pp.tilt); eff.setFloat('vig', pp.vig); };
+
+  // ---- quality tiers ----
+  const state = { q: 2, sg: null };
+  const casters = () => [meshes.solid, ...snake.meshes, ...props.casters, ...props.king.getChildMeshes()];
+  function applyQuality(q) {
+    state.q = q;
+    const dpr = window.devicePixelRatio || 1, cap = [1, 1.5, 2][q];
+    engine.setHardwareScalingLevel(1 / Math.min(dpr, cap));
+    if (state.sg) { state.sg.dispose(); state.sg = null; }
+    if (q >= 1) {
+      const sg = new B.ShadowGenerator(q === 2 ? 2048 : 1024, sun);
+      if (engine.webGLVersion > 1) { sg.usePercentageCloserFiltering = true; sg.filteringQuality = q === 2 ? B.ShadowGenerator.QUALITY_HIGH : B.ShadowGenerator.QUALITY_LOW; }
+      else sg.usePoissonSampling = true;
+      sg.bias = .0012; sg.normalBias = .02; sg.darkness = .15;
+      casters().forEach(m => sg.addShadowCaster(m, false));
+      state.sg = sg;
+    }
+    meshes.solid.receiveShadows = q >= 1;
+    pp.tilt = q >= 2 ? 1 : 0; pp.vig = q >= 1 ? .55 : .3;
+    try { post.samples = q >= 1 ? 4 : 1; } catch (e) { }
+    props.lights.forEach(l => l.setEnabled(q >= 1));
+    props.motes.emitRate = [4, 10, 16][q];
+    qualBtn.textContent = 'Quality: ' + ['Low', 'Medium', 'High'][q];
+    try { localStorage.setItem('shivanag.q', String(q)); } catch (e) { }
+  }
+
+  // ---- HUD ----
+  const $ = (id) => document.getElementById(id);
+  const qualBtn = $('qual'), camBtns = Array.from(document.querySelectorAll('#cams button'));
+  function setCam(i) { rig.setPreset(i); camBtns.forEach((b, k) => b.classList.toggle('on', k === rig.preset)); }
+  camBtns.forEach((b, i) => b.addEventListener('click', () => { setCam(i); b.blur(); }));
+  $('rotL').addEventListener('click', (e) => { rig.rotate(-1); e.target.blur(); });
+  $('rotR').addEventListener('click', (e) => { rig.rotate(1); e.target.blur(); });
+  const seeBtn = $('see');
+  seeBtn.addEventListener('click', (e) => { setOcc(!occ.on); e.target.blur(); });
+  qualBtn.addEventListener('click', (e) => { applyQuality((state.q + 1) % 3); e.target.blur(); });
+  setCam(1);
+
+  // ---- input ----
+  const KEYS = { ArrowUp: [0, 1], w: [0, 1], W: [0, 1], ArrowDown: [0, -1], s: [0, -1], S: [0, -1], ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0], ArrowRight: [1, 0], d: [1, 0], D: [1, 0] };
+  const held = [];
+  let joy = null;
+  addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (KEYS[e.key]) { e.preventDefault(); const i = held.indexOf(e.key); if (i >= 0) held.splice(i, 1); held.push(e.key); return; }
+    if (e.key === 'q' || e.key === 'Q') rig.rotate(-1);
+    else if (e.key === 'e' || e.key === 'E') rig.rotate(1);
+    else if (e.key >= '1' && e.key <= '4') setCam(+e.key - 1);
+    else if (e.key === 'g' || e.key === 'G') applyQuality((state.q + 1) % 3);
+    else if (e.key === 'f' || e.key === 'F') $('fps').classList.toggle('hide');
+    else if (e.key === 't' || e.key === 'T') setOcc(!occ.on);
+    else if (e.key === 'h' || e.key === 'H') $('help').classList.toggle('hide');
+  });
+  addEventListener('keyup', (e) => { const i = held.indexOf(e.key); if (i >= 0) held.splice(i, 1); });
+  addEventListener('blur', () => { held.length = 0; joy = null; $('joy').style.display = 'none'; });
+  canvas.addEventListener('wheel', (e) => { e.preventDefault(); rig.zoom = clamp(rig.zoom * Math.exp(e.deltaY * .0012), .6, 1.7); }, { passive: false });
+  const joyEl = $('joy'), knob = $('knob');
+  canvas.addEventListener('pointerdown', (e) => {
+    canvas.setPointerCapture(e.pointerId);
+    joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY, ux: 0, uy: 0 };
+    joyEl.style.display = 'block'; joyEl.style.left = e.clientX + 'px'; joyEl.style.top = e.clientY + 'px'; knob.style.transform = 'translate(-50%,-50%)';
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!joy || e.pointerId !== joy.id) return;
+    let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy; const len = Math.hypot(dx, dy), R = 60;
+    if (len > R) { joy.ox += dx / len * (len - R); joy.oy += dy / len * (len - R); dx = e.clientX - joy.ox; dy = e.clientY - joy.oy; joyEl.style.left = joy.ox + 'px'; joyEl.style.top = joy.oy + 'px'; }
+    knob.style.transform = `translate(calc(-50% + ${dx * .6}px), calc(-50% + ${dy * .6}px))`;
+    if (Math.hypot(dx, dy) > 22) { if (Math.abs(dx) > Math.abs(dy)) { joy.ux = Math.sign(dx); joy.uy = 0; } else { joy.ux = 0; joy.uy = -Math.sign(dy); } }
+    else { joy.ux = 0; joy.uy = 0; }
+  });
+  const endJoy = (e) => { if (joy && e.pointerId === joy.id) { joy = null; joyEl.style.display = 'none'; } };
+  canvas.addEventListener('pointerup', endJoy); canvas.addEventListener('pointercancel', endJoy);
+
+  function inputVec() {
+    if (held.length) return KEYS[held[held.length - 1]];
+    if (joy && (joy.ux || joy.uy)) return [joy.ux, joy.uy];
+    return null;
+  }
+
+  // ---- main loop ----
+  let time = 0, frames = 0, autoChecked = 0;
+  engine.runRenderLoop(() => {
+    const dt = Math.min(.05, engine.getDeltaTime() / 1000);
+    time += dt;
+    const v = inputVec();
+    snake.wish = v ? rig.worldDir(v[0], v[1]) : null;
+    snake.update(dt, time);
+    rig.update(dt, snake.head, snake.moving || !!snake.wish);
+    props.update(time);
+    { const h = snake.head, q = snake.seg[2].position; if (occ.p) { occ.p.a.set(h.x, h.y + .4, h.z, 1.35); occ.p.b.set(q.x, q.y, q.z, 1.35); } }
+    scene.render();
+    if (++frames % 20 === 0) $('fps').textContent = engine.getFps().toFixed(0) + ' fps';
+    // auto-downgrade on slow devices (once per few seconds, never below Low)
+    if (time - autoChecked > 4 && time > 4 && !window.__noAuto) {
+      autoChecked = time;
+      if (engine.getFps() < 32 && state.q > 0) applyQuality(state.q - 1);
+    }
+  });
+  addEventListener('resize', () => engine.resize());
+
+  // initial quality: remembered, else by device
+  let q0 = 2;
+  try { const s = localStorage.getItem('shivanag.q'); if (s !== null) q0 = +s; else if (/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)) q0 = 1; } catch (e) { }
+  applyQuality(q0);
+
+  // title card
+  setTimeout(() => { if (!window.__failed) $('title').classList.add('gone'); }, 3200);
+  $('title').addEventListener('click', () => $('title').classList.add('gone'));
+  window.__game = { occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
+  window.__ready = true;
+} catch (err) { window.__showErr && window.__showErr((err && err.message) || String(err)); console.error(err); } })();
