@@ -10,6 +10,8 @@ Hard requirements:
 
 ## Status
 
+**v0.8.0, New skeleton.** Feet, pelvis, chest and head each have their own direction; torso hinges forward at the hips; knees follow the feet; elbows are kept outside the torso and thighs (tested for every stance and both handednesses). Stances are fitted to landmarks marked on the reference photos (`tools/refmatch.ts`, `test/refs/refs.json`).
+
 **v0.7.3, Face and side-on stance.** The black block over the face was the helmet guard; it is now an eye band and a thin chin bar so the face shows. Body is more side-on (chest open 0.6 to 0.2 rad).
 
 **v0.7.2, Backlift tuned.** Lifted bat now angles back and out toward the slips behind the shoulder, hands low by the back hip.

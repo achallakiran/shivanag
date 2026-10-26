@@ -60,7 +60,7 @@ export function hashSim(s: SimState): string {
   const p = s.stance.pose;
   const sw = s.swing;
   const k = s.shot;
-  const nums = [sw.alpha, sw.omega, sw.phase, sw.seen, sw.psi, sw.eps, sw.roll, sw.yaw, s.stance.gate, p.open, p.hx, p.hy, p.hz, p.blBack, p.blSide, p.line, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.lean, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length, b.hit, b.maxY, k.state, k.speed, k.launch, k.dir, k.s, k.lat];
+  const nums = [sw.alpha, sw.omega, sw.phase, sw.seen, sw.psi, sw.eps, sw.roll, sw.yaw, s.stance.gate, p.open, p.hx, p.hy, p.hz, p.blBack, p.blSide, p.line, p.ffx, p.ffz, p.bfx, p.bfz, p.ffLift, p.bfLift, p.drop, p.pitch, p.hip, p.toeF, p.toeB, p.wf, b.active, b.x, b.y, b.z, b.vx, b.vy, b.vz, b.wx, b.wy, b.wz, b.bounces, b.bx, b.bz, b.age, m.phase, m.left, m.rng, m.count, m.speedKmh, m.lineX, m.length, b.hit, b.maxY, k.state, k.speed, k.launch, k.dir, k.s, k.lat];
   const buf = new DataView(new ArrayBuffer(8 * nums.length + 4));
   nums.forEach((v, i) => buf.setFloat64(i * 8, v, true));
   buf.setUint32(8 * nums.length, s.tick, true);

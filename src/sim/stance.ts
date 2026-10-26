@@ -26,13 +26,16 @@ export interface StancePose {
   ffLift: number; // foot height above the ground while it is moving
   bfLift: number;
   drop: number; // extra hip drop, metres
-  lean: number; // torso lean toward the bowler, metres at the shoulders
+  pitch: number; // torso hinge forward from the hips toward the bowler, radians
   wf: number; // weight on the front foot, 0..1
   line: number; // reserved (swing direction offset); zero until swipes arrive
-  open: number; // chest turned toward the bowler, radians, added to body.open
-  hx: number; // hands at rest, from the shoulder centre: along the chest direction (toward the off side),
+  open: number; // chest turn toward the bowler, radians, added to body.open (0 = side-on)
+  hip: number; // pelvis turn from side-on toward the bowler, radians (pi/2 = square to the bowler)
+  toeF: number; // front foot direction, radians from side-on (pi/2 = pointing at the bowler)
+  toeB: number; // back foot direction, same convention
+  hx: number; // hands at rest, from the shoulder centre, in batter axes: toward the off side,
   hy: number; //   up (negative is below the shoulders, scaled by body height),
-  hz: number; //   and toward the bowler across the hips
+  hz: number; //   and toward the bowler
   blBack: number; // backlift: bat tilt from vertical, radians (0 upright, about 2.6 grounded)
   blSide: number; // backlift: azimuth of the tilt, radians (0 toward the keeper, pi/2 toward the off side)
 }
@@ -51,39 +54,49 @@ export function createStance(c: StanceCfg, rightHanded: boolean): StanceState {
 }
 
 // Where the feet and body want to be. Values are written for a right-hander as (toward the off side, toward the bowler).
+// Each stance sets: feet, hip drop, torso hinge (pitch), weight, the chest turn (open), the pelvis turn (hip), the
+// direction each foot points (toeF/toeB), the hands, and the backlift (tilt blBack and azimuth blSide of the bat).
 export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean, lifted = true): StancePose {
   const f = rightHanded ? -1 : 1; // X = f * (distance toward the off side)
-  let ff: [number, number];
-  let bf: [number, number];
-  let drop = 0.04;
-  let lean = 0.1;
+  let ff: [number, number] = [0.2, 0.12];
+  let bf: [number, number] = [-0.2, -0.05];
+  let drop = 0;
+  let pitch = 0.7;
   let wf = 0.5;
-  let open = 0;
-  let hands: [number, number, number] = [0.1, -0.46, 0.1];
+  let open = -0.15;
+  let hip = 1.05;
+  let toeF = 1.0;
+  let toeB = 0.9;
+  let hands: [number, number, number] = [0.0, -0.45, 0.12];
   let blBack = 0.95; // tilt of the lifted bat from vertical
-  let blSide = 0.55; // azimuth of that tilt: 0 back toward the keeper, pi/2 toward the off side (gully)
+  let blSide = 1.0; // azimuth of that tilt: 0 back toward the keeper, pi/2 toward the off side (gully)
   let bfLift = 0;
   switch (gate) {
     case BACK: // back and across: rear foot goes back toward off stump, weight on it, upright, bat high
       ff = [0.2, -0.02];
       bf = [-0.02, -c.backStep];
-      drop = 0.0;
-      lean = 0.02;
+      pitch = 0.3;
       wf = 0.2;
-      open = -0.2;
-      hands = [0.04, -0.26, -0.02];
-      blBack = 0.5;
-      blSide = 0.9;
+      open = -0.3;
+      hip = 0.9;
+      toeF = 1.0;
+      toeB = 0.4;
+      hands = [0.05, -0.36, 0.1];
+      blBack = 0.55;
+      blSide = 0.85;
       break;
     case FRONT: // stride to the pitch of the ball, head over the knee, bat comes down straight
       ff = [0.22, c.frontStride];
       bf = [-0.24, -0.04];
-      drop = 0.12;
-      lean = 0.3;
+      drop = 0.1;
+      pitch = 0.75;
       wf = 0.78;
-      open = -0.1;
-      hands = [0.08, -0.36, 0.0];
-      blBack = 0.62;
+      open = -0.25;
+      hip = 1.1;
+      toeF = 1.25;
+      toeB = 0.6;
+      hands = [0.1, -0.42, 0.3];
+      blBack = 0.6;
       blSide = 1.0;
       bfLift = 0.03;
       break;
@@ -91,21 +104,23 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean, lif
       ff = [0.1, c.sitReach];
       bf = [-0.45, -0.1];
       drop = c.sitDrop;
-      lean = 0.42;
+      pitch = 0.85;
       wf = 0.62;
-      open = 0.5;
-      hands = [0.14, -0.3, 0.1];
-      blBack = 1.2;
-      blSide = 0.5;
+      open = 0.2;
+      hip = 1.2;
+      hands = [0.14, -0.36, 0.3];
+      blBack = 1.3;
+      blSide = 0.4;
       break;
     case REVERSE: // as the sweep, but turned more toward the bowler, bat held out front and low
       ff = [0.3, c.sitReach * 0.9];
       bf = [-0.35, -0.12];
       drop = c.sitDrop;
-      lean = 0.4;
+      pitch = 0.8;
       wf = 0.6;
-      open = 0.95;
-      hands = [0.14, -0.3, 0.1];
+      open = 0.55;
+      hip = 1.45;
+      hands = [0.14, -0.34, 0.3];
       blBack = 1.1;
       blSide = 1.2;
       break;
@@ -113,26 +128,24 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean, lif
       ff = [0.1, c.stepOut];
       bf = [-0.15, c.stepOut * 0.4];
       drop = 0.1;
-      lean = 0.25;
+      pitch = 0.7;
       wf = 0.7;
-      open = -0.1;
-      hands = [0.08, -0.3, 0.0];
+      open = -0.25;
+      hands = [0.08, -0.34, 0.2];
       blBack = 0.45;
       blSide = 0.8;
       bfLift = 0.05;
       break;
-    default: // READY: shoulder-width, parallel to the crease, knees soft, weight even, bat low behind the back foot
-      ff = [0.2, 0.08];
-      bf = [-0.22, -0.06];
+    default: // READY: feet shoulder-width along the crease, knees soft, weight even, bat behind and outside the feet
   }
   if (!lifted) {
-    // Grounded: the bat rests on the ground behind the toes, hands low and in front of the body.
-    blBack = 2.6;
-    blSide = 0.3;
-    hands = [hands[0], Math.min(hands[1], -0.62), 0.22];
+    // Grounded: the bat rests on the ground out to the off side by the toes, the hands low in front of the thighs.
+    blBack = 2.45;
+    blSide = 1.45;
+    hands = [hands[0] + 0.07, Math.min(hands[1], -0.52), hands[2] - 0.07];
   }
   return {
-    ffx: f * ff[0], ffz: ff[1], bfx: f * bf[0], bfz: bf[1], ffLift: 0, bfLift, drop, lean, wf, line: 0, open,
+    ffx: f * ff[0], ffz: ff[1], bfx: f * bf[0], bfz: bf[1], ffLift: 0, bfLift, drop, pitch, wf, line: 0, open, hip, toeF, toeB,
     hx: hands[0], hy: hands[1], hz: hands[2], blBack, blSide,
   };
 }
@@ -178,7 +191,10 @@ export function stepStance(st: StanceState, sel: number, dt: number, c: StanceCf
   moveFoot(p, 'ff', t.ffx, t.ffz, c.footSpeed, dt, 0.15);
   moveFoot(p, 'bf', t.bfx, t.bfz, c.footSpeed, dt, 0.15);
   p.drop = approach(p.drop, t.drop, c.hipSpeed * dt);
-  p.lean = approach(p.lean, t.lean, c.leanSpeed * dt);
+  p.pitch = approach(p.pitch, t.pitch, c.leanSpeed * dt);
+  p.hip = approach(p.hip, t.hip, c.turnSpeed * dt);
+  p.toeF = approach(p.toeF, t.toeF, c.turnSpeed * dt);
+  p.toeB = approach(p.toeB, t.toeB, c.turnSpeed * dt);
   p.wf = approach(p.wf, t.wf, c.weightSpeed * dt);
   p.open = approach(p.open, t.open, c.turnSpeed * dt);
   p.blBack = approach(p.blBack, t.blBack, c.turnSpeed * 2.5 * dt);
@@ -193,7 +209,8 @@ export function lerpPose(a: StancePose, b: StancePose, k: number): StancePose {
   const l = (x: number, y: number) => x + (y - x) * k;
   return {
     ffx: l(a.ffx, b.ffx), ffz: l(a.ffz, b.ffz), bfx: l(a.bfx, b.bfx), bfz: l(a.bfz, b.bfz), ffLift: l(a.ffLift, b.ffLift), bfLift: l(a.bfLift, b.bfLift),
-    drop: l(a.drop, b.drop), lean: l(a.lean, b.lean), wf: l(a.wf, b.wf), line: l(a.line, b.line), open: l(a.open, b.open),
+    drop: l(a.drop, b.drop), pitch: l(a.pitch, b.pitch), wf: l(a.wf, b.wf), line: l(a.line, b.line), open: l(a.open, b.open),
+    hip: l(a.hip, b.hip), toeF: l(a.toeF, b.toeF), toeB: l(a.toeB, b.toeB),
     hx: l(a.hx, b.hx), hy: l(a.hy, b.hy), hz: l(a.hz, b.hz), blBack: l(a.blBack, b.blBack), blSide: l(a.blSide, b.blSide),
   };
 }

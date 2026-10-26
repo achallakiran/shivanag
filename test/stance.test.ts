@@ -41,7 +41,7 @@ test('stance change takes real time, bounded by the foot speed', () => {
   while (ticks < 240 * 5) {
     stepStance(st, STEP, dt, c, true);
     ticks++;
-    if (Math.abs(st.pose.ffz - t.ffz) < 1e-9 && Math.abs(st.pose.ffx - t.ffx) < 1e-9 && Math.abs(st.pose.drop - t.drop) < 1e-9 && Math.abs(st.pose.lean - t.lean) < 1e-9 && Math.abs(st.pose.hy - t.hy) < 1e-9) break;
+    if (Math.abs(st.pose.ffz - t.ffz) < 1e-9 && Math.abs(st.pose.ffx - t.ffx) < 1e-9 && Math.abs(st.pose.drop - t.drop) < 1e-9 && Math.abs(st.pose.pitch - t.pitch) < 1e-9 && Math.abs(st.pose.hy - t.hy) < 1e-9) break;
   }
   const seconds = ticks * dt;
   assert.ok(seconds >= dist / c.footSpeed - 0.02, `arrived too fast: ${seconds}s for ${dist}m`);
@@ -131,4 +131,34 @@ test('backlift: grounded behind the toes while waiting, lifted high and back onc
   assert.ok(gp.batToe[1] < 0.15, 'grounded toe near the floor');
   assert.ok(lp.batToe[1] > 0.7, 'lifted toe well above the knee');
   assert.ok(lp.batToe[2] < lp.batTop[2] - 0.1 || Math.abs(lp.batToe[0] - lp.batTop[0]) > 0.1, 'lifted bat leans back/out');
+});
+
+test('no overlap: elbows, wrists, grip and bat stay outside the torso and thighs in every stance, both handednesses', async () => {
+  const { bodyCapsules, penetration } = await import('../src/sim/skeleton');
+  for (const rh of [true, false]) {
+    for (const lifted of [false, true]) {
+      for (let g = 0; g < STANCE_COUNT; g++) {
+        const p = solvePose({ stance: targetPose(g, c, rh, lifted), alpha: 0, yaw: 0, rightHanded: rh, baseZ: -8.84 }, body);
+        const caps = bodyCapsules(p);
+        const label = `${STANCE_NAMES[g]} ${rh ? 'RH' : 'LH'} ${lifted ? 'lifted' : 'grounded'}`;
+        for (const j of ['elbowL', 'elbowR', 'wristL', 'wristR', 'batGrip'] as const) {
+          const d = penetration(p[j], caps, 0).depth;
+          assert.ok(d < 0.02, `${j} is inside the body by ${d.toFixed(3)} in ${label}`);
+        }
+        // the blade, from just below the hands to the toe
+        for (let s = 0.2; s <= 0.96; s += 0.08) {
+          const pt: [number, number, number] = [p.batTop[0] + (p.batToe[0] - p.batTop[0]) * (s / 0.96), p.batTop[1] + (p.batToe[1] - p.batTop[1]) * (s / 0.96), p.batTop[2] + (p.batToe[2] - p.batTop[2]) * (s / 0.96)];
+          const d = penetration(pt, caps, 0).depth;
+          assert.ok(d < 0.03, `bat at ${s.toFixed(2)} m is inside the body by ${d.toFixed(3)} in ${label}`);
+        }
+      }
+    }
+  }
+});
+
+test('the legs bend toward the feet: knees are ahead of the hips along the foot direction', () => {
+  const p = solvePose({ stance: targetPose(READY, c, true), alpha: 0, yaw: 0, rightHanded: true, baseZ: -8.84 }, body);
+  assert.ok(p.kneeL[2] > p.hipL[2] - 0.02, 'front knee forward');
+  assert.ok(p.pelvis[1] > 0.8 && p.pelvis[1] < 0.95, `hip height ${p.pelvis[1]}`);
+  assert.ok(p.neck[2] - p.pelvis[2] > 0.15, 'torso is hinged toward the bowler');
 });

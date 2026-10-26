@@ -10,7 +10,7 @@ import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import type { AbstractEngine } from '@babylonjs/core/Engines/abstractEngine';
 import type { SimState } from '../sim/sim';
 import type { GameConfig } from '../config/defaults';
-import { JOINTS, JOINT_NAMES, bodyDims, facingVec, solvePose, type JointName, type Pose, type Vec } from '../sim/skeleton';
+import { JOINTS, JOINT_NAMES, bodyDims, facingVec as pose0Face, solvePose, type JointName, type Pose, type Vec } from '../sim/skeleton';
 import { CAMERAS, fovForFill } from './cameras';
 import { DEFAULT_CONFIG } from '../config/defaults';
 import { createStance, lerpPose } from '../sim/stance';
@@ -141,14 +141,14 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     return part;
   };
   const face = (f: Vec): Vec => f;
-  const seg = (n: string, m: StandardMaterial, a: JointName, b: JointName, w: number, d: number) => {
+  const seg = (n: string, m: StandardMaterial, a: JointName, b: JointName, w: number, d: number, sel: (p: Pose, f: Vec) => Vec = (_p, f) => f) => {
     let mesh!: Mesh;
-    const part = mk(n, m, (p, f, k) => span(mesh, p[a], p[b], w * k, d * k, face(f)));
+    const part = mk(n, m, (p, f, k) => span(mesh, p[a], p[b], w * k, d * k, face(sel(p, f))));
     mesh = part.mesh;
   };
   for (const s of ['L', 'R'] as const) {
-    seg(`thigh${s}`, white, `hip${s}`, `knee${s}`, 0.17, 0.17);
-    seg(`shin${s}`, white, `knee${s}`, `ankle${s}`, 0.14, 0.14);
+    seg(`thigh${s}`, white, `hip${s}`, `knee${s}`, 0.17, 0.17, (p) => p.facePelvis);
+    seg(`shin${s}`, white, `knee${s}`, `ankle${s}`, 0.14, 0.14, (p) => (s === 'L' ? p.faceFootL : p.faceFootR));
     seg(`upperArm${s}`, shirt, `shoulder${s}`, `elbow${s}`, 0.1, 0.1);
     seg(`foreArm${s}`, skin, `elbow${s}`, `wrist${s}`, 0.085, 0.085);
     // glove around the wrist, boot from ankle to toe
@@ -158,19 +158,20 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     boot = mk(`boot${s}`, dark, (p, f, k) => {
       const a = p[`ankle${s}`];
       const t = p[`toe${s}`];
-      span(boot, [a[0] - f[0] * 0.05 * k, a[1] - 0.03, a[2] - f[2] * 0.05 * k], [t[0], t[1] + 0.03, t[2]], 0.1 * k, 0.1 * k, [0, 1, 0]);
+      const ff = s === 'L' ? p.faceFootL : p.faceFootR;
+      span(boot, [a[0] - ff[0] * 0.05 * k, a[1] - 0.03, a[2] - ff[2] * 0.05 * k], [t[0], t[1] + 0.03, t[2]], 0.1 * k, 0.1 * k, [0, 1, 0]);
     }).mesh;
   }
   let pelvisBlock!: Mesh;
-  pelvisBlock = mk('pelvis', white, (p, f, k) => span(pelvisBlock, p.hipL, p.hipR, 0.22 * k, 0.26 * k, face(f))).mesh;
+  pelvisBlock = mk('pelvis', white, (p, f, k) => span(pelvisBlock, p.hipL, p.hipR, 0.22 * k, 0.26 * k, face(p.facePelvis))).mesh;
   let torso!: Mesh;
   torso = mk('torso', shirt, (p, f, k) => span(torso, p.pelvis, [p.neck[0], p.neck[1] - 0.02, p.neck[2]], 0.38 * k, 0.24 * k, face(f))).mesh;
   let neckMesh!: Mesh;
-  neckMesh = mk('neck', skin, (p, f, k) => span(neckMesh, p.neck, [p.neck[0], p.neck[1] + 0.1 * k, p.neck[2] + 0.02], 0.09 * k, 0.09 * k, face(f))).mesh;
+  neckMesh = mk('neck', skin, (p, f, k) => span(neckMesh, p.neck, [p.neck[0], p.neck[1] + 0.1 * k, p.neck[2] + 0.02], 0.09 * k, 0.09 * k, face(p.faceHead))).mesh;
   let headMesh!: Mesh;
-  headMesh = mk('head', skin, (p, f, k) => span(headMesh, [p.head[0], p.head[1] - 0.1 * k, p.head[2]], [p.head[0], p.head[1] + 0.1 * k, p.head[2]], 0.19 * k, 0.21 * k, face(f))).mesh;
+  headMesh = mk('head', skin, (p, f, k) => span(headMesh, [p.head[0], p.head[1] - 0.1 * k, p.head[2]], [p.head[0], p.head[1] + 0.1 * k, p.head[2]], 0.19 * k, 0.21 * k, face(p.faceHead))).mesh;
   let helmet!: Mesh;
-  helmet = mk('helmet', navy, (p, f, k) => span(helmet, [p.head[0], p.head[1] + 0.0, p.head[2]], [p.head[0], p.head[1] + 0.15 * k, p.head[2]], 0.25 * k, 0.27 * k, face(f))).mesh;
+  helmet = mk('helmet', navy, (p, f, k) => span(helmet, [p.head[0], p.head[1] + 0.0, p.head[2]], [p.head[0], p.head[1] + 0.15 * k, p.head[2]], 0.25 * k, 0.27 * k, face(p.faceHead))).mesh;
   // Face: a dark eye band and one thin guard bar across the chin, so the skin shows.
   let eyes!: Mesh;
   eyes = mk('eyes', dark, (p, f, k) => span(eyes, [p.head[0], p.head[1] + 0.02 * k, p.head[2] + 0.115 * k], [p.head[0], p.head[1] + 0.045 * k, p.head[2] + 0.115 * k], 0.15 * k, 0.02 * k, [0, 0, 1])).mesh;
@@ -263,7 +264,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     const yaw = sw.prevYaw + (sw.yaw - sw.prevYaw) * alpha;
     const rh = state.rightHanded;
     const sp = lerpPose(s.stance.prev, s.stance.pose, alpha);
-    const f = facingVec(rh, body.open + sp.open);
+    const f = pose0Face(rh, body.open + sp.open);
     const pose = solvePose({ stance: sp, alpha: batAlpha, yaw, eps: sw.eps || undefined, roll: sw.roll, rightHanded: rh, baseZ: BAT_Z }, body);
     lastPose = pose;
     for (const p of parts) p.place(pose, f, D.scale);

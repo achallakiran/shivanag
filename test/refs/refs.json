@@ -1,0 +1,19 @@
+{
+  "note": "Landmarks marked by eye on the reference images (pixel coordinates in the cropped frame named by `source`). `a`/`b` mark the two legs/arms of a pair; the matcher tries both assignments. Camera azimuth, scale and offset are fitted per image.",
+  "refs": [
+    { "id": "img1-ok", "source": "image 1 (green tick), original px", "stance": 0, "lifted": true, "rightHanded": true,
+      "pts": { "head": [175,82], "neck": [182,105], "pelvis": [232,172], "grip": [170,162], "batToe": [155,124],
+               "kneeA": [175,203], "ankleA": [195,265], "kneeB": [212,215], "ankleB": [228,258] } },
+    { "id": "img2-annot", "source": "image 2, original px", "stance": 0, "lifted": true, "rightHanded": true,
+      "pts": { "head": [215,145], "neck": [240,172], "grip": [240,275], "batToe": [130,255], "kneeA": [270,345], "ankleA": [275,425] } },
+    { "id": "vaughan-f1", "source": "image 3 Vaughan frame 1, crop-local px", "stance": 0, "lifted": false, "rightHanded": true,
+      "pts": { "head": [68,11], "neck": [74,23], "pelvis": [93,57], "grip": [71,65], "batToe": [54,103],
+               "kneeA": [84,71], "ankleA": [81,111] } },
+    { "id": "prior-f1", "source": "image 3 Prior frame 1, crop-local px", "stance": 0, "lifted": false, "rightHanded": false,
+      "pts": { "head": [64,351], "neck": [67,363], "pelvis": [97,381], "grip": [71,397], "batToe": [62,438],
+               "kneeA": [77,409], "ankleA": [78,439] } },
+    { "id": "gif-grounded", "source": "line-art gif 1/5, original px", "stance": 0, "lifted": false, "rightHanded": true,
+      "pts": { "head": [225,75], "neck": [225,97], "shoulderA": [205,105], "shoulderB": [255,105], "pelvis": [230,180],
+               "grip": [225,190], "batToe": [118,238], "kneeA": [215,205], "kneeB": [245,200], "ankleA": [200,268], "ankleB": [240,270] } }
+  ]
+}
