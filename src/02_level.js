@@ -60,6 +60,9 @@ function buildLevel() {
     if (hash3(x, 4, z) > .74) w.set(x, 2, z, M.RUBBLE);
   }
 
+  // poles: slim climbable shafts (one reaches the high pillar's cap)
+  w.box(8, 2, 10, 8, 7, 10, M.POLE); w.box(7, 2, 13, 7, 4, 13, M.POLE);
+
   // ---- king's cell ----
   const bars = [];
   w.box(12, 2, 1, 20, 2, 1, M.WALLX); w.box(12, 2, 1, 12, 2, 6, M.WALLX); w.box(20, 2, 1, 20, 2, 6, M.WALLX);
