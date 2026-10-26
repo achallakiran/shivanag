@@ -45,7 +45,7 @@ class Guard {
   }
 
   _build() {
-    const sc = this.scene, root = new B.TransformNode('guard', sc); this.root = root; this.meshes = [];
+    const sc = this.scene, root = new B.TransformNode('guard', sc); this.root = root; root.scaling.set(2.7, 2.5, 2.7); this.meshes = [];
     const mat = (c, s) => { const m = new B.StandardMaterial('g', sc); m.diffuseColor = col3(c); const k = s || .08; m.specularColor = new B.Color3(k, k, k); return m; };
     const tun = mat(this.opts.color || 0xb23a3a), trim = mat(0xf0c14e, .4), skin = mat(0xd49a6a, .12), dark = mat(0x2d2530), wood = mat(0x8a5f38), steel = mat(0xc9ced6, .5);
     const box = (n, w, h, d, x, y, z, m, parent) => { const b = B.MeshBuilder.CreateBox(n, { width: w, height: h, depth: d }, sc); b.parent = parent || root; b.position.set(x, y, z); b.material = m; b.isPickable = false; this.meshes.push(b); return b; };
