@@ -1,9 +1,9 @@
 /* Shivanag — camera rig (M0): four presets blended by a dolly-zoom trick, 90-degree snap rotation */
 const PRESETS = [
-  { id: 'iso', label: 'Isometric', yaw: 45, pitch: 35.26, fov: 6, size: 24 },
-  { id: 'three', label: '3/4 View', yaw: 28, pitch: 52, fov: 22, size: 17 },
-  { id: 'steep', label: 'Steep', yaw: 18, pitch: 72, fov: 26, size: 19 },
-  { id: 'dyn', label: 'Dynamic', yaw: 28, pitch: 50, fov: 24, size: 19, dynamic: true },
+  { id: 'iso', label: 'Isometric', yaw: 45, pitch: 35.26, fov: 6, size: 30 },
+  { id: 'three', label: '3/4 View', yaw: 28, pitch: 52, fov: 22, size: 21 },
+  { id: 'steep', label: 'Steep', yaw: 18, pitch: 72, fov: 26, size: 23 },
+  { id: 'dyn', label: 'Dynamic', yaw: 28, pitch: 50, fov: 24, size: 23, dynamic: true },
 ];
 
 class CamRig {

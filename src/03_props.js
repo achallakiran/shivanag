@@ -38,20 +38,21 @@ function buildProps(scene, L) {
     m.diffuseColor = B.Color3.Black(); m.emissiveColor = col3(hexcol); m.disableLighting = true; return m;
   };
 
+  const S = L.S || 1; P.S = S;
   // ---- torches ----
   const flameMat = emis(0xff9a2e), coreMat = emis(0xffe27a);
   for (const t of L.torches) {
     const outer = B.MeshBuilder.CreateSphere('flame', { diameter: 1, segments: 8 }, scene);
-    outer.scaling.set(.26, .44, .26); outer.position.set(t.x, 4.38, t.z); outer.material = flameMat;
+    outer.scaling.set(.26 * S, .44 * S, .26 * S); outer.position.set(t.x, L.torchTop + .38 * S, t.z); outer.material = flameMat;
     const core = B.MeshBuilder.CreateSphere('core', { diameter: 1, segments: 6 }, scene);
-    core.scaling.set(.13, .24, .13); core.position.set(t.x, 4.32, t.z); core.material = coreMat;
-    const halo = makeHalo(scene, haloTex, 3.4, new B.Color3(1, .62, .26), .9);
-    halo.position.set(t.x, 4.45, t.z);
+    core.scaling.set(.13 * S, .24 * S, .13 * S); core.position.set(t.x, L.torchTop + .32 * S, t.z); core.material = coreMat;
+    const halo = makeHalo(scene, haloTex, 3.4 * S, new B.Color3(1, .62, .26), .9);
+    halo.position.set(t.x, L.torchTop + .45 * S, t.z);
     let light = null;
     if (t.light) {
-      light = new B.PointLight('torch', new B.Vector3(t.x, 4.8, t.z), scene);
+      light = new B.PointLight('torch', new B.Vector3(t.x, L.torchTop + .8 * S, t.z), scene);
       light.diffuse = new B.Color3(1, .62, .27); light.specular = B.Color3.Black();
-      light.intensity = 1.5; light.range = 9;
+      light.intensity = 1.5; light.range = 9 * S;
       P.lights.push(light);
     }
     P.flames.push({ outer, core, halo, light, ph: Math.random() * 10, baseI: 1.5 });
@@ -61,27 +62,27 @@ function buildProps(scene, L) {
   // ---- shivalinga details: rounded top + tripundra ash stripes + glow ----
   const lg = L.linga;
   const lingaMat = std(0x45424f, .25); lingaMat.specularPower = 24;
-  const dome = B.MeshBuilder.CreateSphere('lingaDome', { diameter: .98, segments: 16 }, scene);
-  dome.position.set(lg.x, lg.top - .05, lg.z); dome.material = lingaMat; P.casters.push(dome);
+  const dome = B.MeshBuilder.CreateSphere('lingaDome', { diameter: .98 * S, segments: 16 }, scene);
+  dome.position.set(lg.x, lg.top - .05 * S, lg.z); dome.material = lingaMat; P.casters.push(dome);
   const ashMat = new B.StandardMaterial('ash', scene);
   ashMat.diffuseColor = col3(0xf4efe2); ashMat.emissiveColor = col3(0xf4efe2).scale(.45); ashMat.specularColor = B.Color3.Black();
   [5.78, 6.2, 6.62].forEach((y, i) => {
-    const s = B.MeshBuilder.CreateBox('ash', { width: 1.03, height: .1, depth: 1.03 }, scene);
-    s.position.set(lg.x, y + (i === 1 ? .0 : 0), lg.z); s.material = ashMat;
+    const s = B.MeshBuilder.CreateBox('ash', { width: 1.03 * S, height: .1 * S, depth: 1.03 * S }, scene);
+    s.position.set(lg.x, 2 + (y - 2) * S, lg.z); s.material = ashMat;
   });
-  const lingaHalo = makeHalo(scene, haloTex, 5.2, new B.Color3(.75, .55, .95), .55);
-  lingaHalo.position.set(lg.x, lg.top - 1.2, lg.z);
-  const lingaHalo2 = makeHalo(scene, haloTex, 2.4, new B.Color3(1, .9, .7), .55);
-  lingaHalo2.position.set(lg.x, lg.top + .3, lg.z);
+  const lingaHalo = makeHalo(scene, haloTex, 5.2 * S, new B.Color3(.75, .55, .95), .55);
+  lingaHalo.position.set(lg.x, lg.top - 1.2 * S, lg.z);
+  const lingaHalo2 = makeHalo(scene, haloTex, 2.4 * S, new B.Color3(1, .9, .7), .55);
+  lingaHalo2.position.set(lg.x, lg.top + .3 * S, lg.z);
   P.lingaHalos = [lingaHalo, lingaHalo2];
-  const lingaLight = new B.PointLight('lingaLight', new B.Vector3(lg.x, lg.top + .5, lg.z), scene);
-  lingaLight.diffuse = new B.Color3(.72, .6, 1); lingaLight.specular = B.Color3.Black(); lingaLight.intensity = .7; lingaLight.range = 7;
+  const lingaLight = new B.PointLight('lingaLight', new B.Vector3(lg.x, lg.top + .5 * S, lg.z), scene);
+  lingaLight.diffuse = new B.Color3(.72, .6, 1); lingaLight.specular = B.Color3.Black(); lingaLight.intensity = .7; lingaLight.range = 7 * S;
   P.lights.push(lingaLight);
 
   // ---- king (praying, seated) ----
   const K = L.king;
   const king = new B.TransformNode('king', scene);
-  king.position.set(K.x, K.y, K.z);
+  king.position.set(K.x, K.y, K.z); king.scaling.setAll(S);
   const part = (mesh, x, y, z, mat) => { mesh.parent = king; mesh.position.set(x, y, z); mesh.material = mat; P.casters.push(mesh); return mesh; };
   const robe = std(0xe08a2e), robe2 = std(0xc4622a), skin = std(0xdca77a, .15), gold = std(0xf2c14e, .5), red = std(0xb4483a), dark = std(0x2a2020);
   gold.emissiveColor = col3(0xf2c14e).scale(.18);
@@ -100,22 +101,22 @@ function buildProps(scene, L) {
   });
   part(B.MeshBuilder.CreateSphere('hands', { diameter: .15, segments: 8 }, scene), 0, .66, .26, skin);
   P.king = king;
-  const kHalo = makeHalo(scene, haloTex, 3.0, new B.Color3(1, .8, .4), .55);
-  kHalo.position.set(K.x, K.y + 1.05, K.z - .35);
+  const kHalo = makeHalo(scene, haloTex, 3.0 * S, new B.Color3(1, .8, .4), .55);
+  kHalo.position.set(K.x, K.y + 1.05 * S, K.z - .35 * S);
   P.kingHalo = kHalo;
-  const kLight = new B.PointLight('kingLight', new B.Vector3(K.x, K.y + 1.6, K.z + .4), scene);
-  kLight.diffuse = new B.Color3(1, .82, .5); kLight.specular = B.Color3.Black(); kLight.intensity = .6; kLight.range = 5;
+  const kLight = new B.PointLight('kingLight', new B.Vector3(K.x, K.y + 1.6 * S, K.z + .4 * S), scene);
+  kLight.diffuse = new B.Color3(1, .82, .5); kLight.specular = B.Color3.Black(); kLight.intensity = .6; kLight.range = 5 * S;
   P.lights.push(kLight); P.kingLight = kLight;
 
   // ---- cell bars (real thin bars, not voxels) ----
   const barMat = std(0x5b4a3c, .55); barMat.specularPower = 30;
   const bz = L.barZ;
   L.bars.forEach(x => {
-    const bar = B.MeshBuilder.CreateCylinder('bar', { diameter: .2, height: 2.0, tessellation: 8 }, scene);
-    bar.position.set(x, 3.0, bz); bar.material = barMat; P.casters.push(bar);
+    const bar = B.MeshBuilder.CreateCylinder('bar', { diameter: .2 * S, height: L.barH, tessellation: 8 }, scene);
+    bar.position.set(x, L.barY, bz); bar.material = barMat; P.casters.push(bar);
   });
-  [2.35, 3.6].forEach(y => {
-    const rail = B.MeshBuilder.CreateBox('rail', { width: 7.0, height: .14, depth: .2 }, scene);
+  L.railYs.forEach(y => {
+    const rail = B.MeshBuilder.CreateBox('rail', { width: L.railW, height: .14 * S, depth: .2 * S }, scene);
     rail.position.set(L.railX, y, bz); rail.material = barMat; P.casters.push(rail);
   });
 
@@ -130,7 +131,7 @@ function buildProps(scene, L) {
   const ps = new B.ParticleSystem('motes', 140, scene);
   ps.particleTexture = haloTex;
   ps.emitter = new B.Vector3(lg.x, 2.4, lg.z);
-  ps.minEmitBox = new B.Vector3(-9, 0, -8); ps.maxEmitBox = new B.Vector3(9, 5, 8);
+  ps.minEmitBox = new B.Vector3(-9 * S, 0, -8 * S); ps.maxEmitBox = new B.Vector3(9 * S, 5 * S, 8 * S);
   ps.color1 = new B.Color4(1, .85, .55, .8); ps.color2 = new B.Color4(1, .65, .35, .6); ps.colorDead = new B.Color4(1, .6, .3, 0);
   ps.minSize = .07; ps.maxSize = .2; ps.minLifeTime = 4; ps.maxLifeTime = 8; ps.emitRate = 16;
   ps.direction1 = new B.Vector3(-.15, .25, -.15); ps.direction2 = new B.Vector3(.15, .55, .15);
@@ -142,8 +143,8 @@ function buildProps(scene, L) {
     for (const f of P.flames) {
       const n = .5 + .5 * Math.sin(time * 9 + f.ph) * Math.sin(time * 5.3 + f.ph * 2);
       const s = .9 + .22 * n;
-      f.outer.scaling.set(.26 * s, .44 * (.9 + .3 * n), .26 * s);
-      f.core.scaling.set(.13 * s, .24 * (.9 + .3 * n), .13 * s);
+      f.outer.scaling.set(.26 * S * s, .44 * S * (.9 + .3 * n), .26 * S * s);
+      f.core.scaling.set(.13 * S * s, .24 * S * (.9 + .3 * n), .13 * S * s);
       f.halo.scaling.setAll(.92 + .14 * n);
       if (f.light) f.light.intensity = f.baseI * (.88 + .22 * n);
     }

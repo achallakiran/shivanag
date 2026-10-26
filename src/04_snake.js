@@ -109,7 +109,7 @@ class Snake {
   _cp(x, z, h, fx, fz) { return { x: x + .5 + fx * .2, y: h + .2, z: z + .5 + fz * .2 }; }
   _go(pt, cell, dur) {
     this.path.unshift(pt); if (this.path.length > 48) this.path.length = 48;
-    this.cell = cell; this.t = 0; this.dur = dur; return true;
+    this.cell = cell; this.t = 0; this.dur = dur / 1.25; return true;
   }
 
   tryStep(dir) { return this.climb ? this._stepClimb(dir[0], dir[1]) : this._stepGround(dir[0], dir[1]); }

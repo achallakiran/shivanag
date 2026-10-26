@@ -156,12 +156,27 @@ function buildCourtyard() {
 }
 
 
-/* the full island: the hand-designed courtyard sits in the middle of a larger grassy island with outer lawns, trees and a patrol lane */
-const OX = 20, OZ = 16;
+/* scale the hand-designed courtyard up so walkways, pillars and walls are big enough for the characters */
+const SC = 2;
+function scaleCourtyard(I) {
+  const S = SC, w = new VoxelWorld(I.W * S, I.D * S, -8, 22), src = I.world;
+  for (let z = 0; z < I.D; z++) for (let y = -8; y <= 22; y++) for (let x = 0; x < I.W; x++) {
+    const m = src.get(x, y, z); if (m === 0) continue;
+    if (y <= 1) { for (let i = 0; i < S; i++) for (let j = 0; j < S; j++) w.set(x * S + i, y, z * S + j, m); continue; }
+    const by = 2 + (y - 2) * S;
+    for (let k = 0; k < S; k++) for (let i = 0; i < S; i++) for (let j = 0; j < S; j++) {
+      if (m === M.POLE && (i || j)) continue; // poles stay a single slim shaft
+      w.set(x * S + i, by + k, z * S + j, m);
+    }
+  }
+  return w;
+}
+
+/* the full island: the enlarged courtyard sits in a grassy border with a few trees and a patrol lane */
+const OX = 6, OZ = 6;
 function buildLevel() {
-  const I = buildCourtyard(), W = I.W + 2 * OX, D = I.D + 2 * OZ;
+  const I = buildCourtyard(), S = SC, SW = scaleCourtyard(I), IW = I.W * S, ID = I.D * S, W = IW + 2 * OX, D = ID + 2 * OZ;
   const w = new VoxelWorld(W, D, -8, 22);
-  // underside, base slab, outer floor
   for (let k = 1; k <= 8; k++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const edge = Math.min(x, W - 1 - x, z, D - 1 - z), inset = k * 1.8 + hash3(x, k, z) * 1.7;
     if (edge >= inset) w.set(x, -k, z, (k & 1) ? M.ROCK : M.ROCK2);
@@ -172,26 +187,24 @@ function buildLevel() {
     if (r > .975) m = M.FLOWER1; else if (r > .95) m = M.FLOWER2;
     w.set(x, 1, z, m);
   }
-  for (let x = 0; x < W; x++) for (let z = 22 + OZ; z <= 23 + OZ; z++) w.set(x, 1, z, M.WATER); // the moat runs the full width
-  // outer patrol lane (sand) along the south lawn
-  for (let x = 8; x < W - 8; x++) for (let z = D - OZ + 2; z <= D - OZ + 3; z++) w.set(x, 1, z, ((x + z) & 1) ? M.SAND : M.SAND2);
-  // drop the courtyard in
-  for (let z = 0; z < I.D; z++) for (let y = 1; y <= 22; y++) for (let x = 0; x < I.W; x++) w.set(x + OX, y, z + OZ, I.world.get(x, y, z));
-  // outer scenery (world coordinates; limbs point to the island centre)
-  const inside = (x, z, m) => x >= OX - m && x < OX + I.W + m && z >= OZ - m && z < OZ + I.D + m;
+  for (let x = 0; x < W; x++) for (let z = 22 * S + OZ; z < 24 * S + OZ; z++) w.set(x, 1, z, M.WATER); // the moat runs the full width
+  for (let x = 6; x < W - 6; x++) for (let z = D - OZ + 2; z <= D - OZ + 3; z++) w.set(x, 1, z, ((x + z) & 1) ? M.SAND : M.SAND2); // outer patrol lane
+  for (let z = 0; z < ID; z++) for (let y = -8; y <= 22; y++) for (let x = 0; x < IW; x++) { const m = SW.get(x, y, z); if (m !== 0 && y >= 1) w.set(x + OX, y, z + OZ, m); }
+  const inside = (x, z, m) => x >= OX - m && x < OX + IW + m && z >= OZ - m && z < OZ + ID + m;
   const veg = vegetation(w, W / 2, D / 2);
-  for (let gz = 3; gz < D - 2; gz += 5) for (let gx = 3; gx < W - 2; gx += 5) {
+  for (let gz = 3; gz < D - 2; gz += 6) for (let gx = 3; gx < W - 2; gx += 6) {
     const x = gx + Math.floor(hash3(gx, 3, gz) * 3), z = gz + Math.floor(hash3(gx, 4, gz) * 3), r = hash3(gx, 5, gz);
-    if (inside(x, z, 3) || (z >= 22 + OZ - 2 && z <= 23 + OZ + 2) || (z >= D - OZ + 1 && z <= D - OZ + 4 && x >= 6 && x < W - 6)) continue;
-    if (r < .42) veg.tree(x, z, 2 + (r < .2 ? 1 : 0)); else if (r < .72) veg.bush(x, z); else veg.rock(x, z, r > .86);
+    if (inside(x, z, 2) || (z >= D - OZ + 1 && z <= D - OZ + 4)) continue;
+    if (r < .45) veg.tree(x, z, 2 + (r < .2 ? 1 : 0)); else if (r < .75) veg.bush(x, z); else veg.rock(x, z, r > .88);
   }
-  const cell = (c) => ({ x: c.x + OX, z: c.z + OZ });
+  const fy = (y) => 2 + (y - 2) * S;
+  const bars = []; I.bars.forEach(x => { bars.push(x * S + OX, x * S + OX + S); });
   return {
-    world: w, W, D, IW: I.W, OX, OZ,
-    torches: I.torches.map(t => ({ x: t.x + OX, z: t.z + OZ, light: t.light })),
-    king: { x: I.king.x + OX, y: I.king.y, z: I.king.z + OZ },
-    linga: { x: I.linga.x + OX, top: I.linga.top, z: I.linga.z + OZ },
-    spawnCells: I.spawnCells.map(cell), spawnTop: I.spawnTop,
-    bars: I.bars.map(x => x + OX), barZ: 6.5 + OZ, railX: I.W - 16.5 + OX,
+    world: w, W, D, IW: I.W, I0W: I.W, OX, OZ, S,
+    torches: I.torches.map(t => ({ x: t.x * S + OX, z: t.z * S + OZ, light: t.light })), torchTop: fy(4),
+    king: { x: I.king.x * S + OX, y: I.king.y, z: I.king.z * S + OZ },
+    linga: { x: I.linga.x * S + OX, top: fy(I.linga.top), z: I.linga.z * S + OZ },
+    spawnCells: I.spawnCells.map(c => ({ x: c.x * S + OX, z: c.z * S + OZ })), spawnTop: fy(I.spawnTop),
+    bars, barZ: 6.5 * S + OZ, barY: fy(3), barH: 2 * S, railX: (I.W - 16.5) * S + OX, railW: 7 * S, railYs: [fy(2.35), fy(3.6)],
   };
 }

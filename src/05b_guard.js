@@ -1,6 +1,6 @@
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 2.2, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
@@ -9,10 +9,10 @@ function buildLightMap(L) {
   for (let z = 0; z < L.D; z++) for (let x = 0; x < L.W; x++) {
     let v = .6;
     // shadow: any tall solid up-sun of this cell shades it
-    for (let k = 1; k <= 6; k++) {
+    for (let k = 1; k <= 10; k++) {
       const px = Math.round(x - sx * k * .7), pz = Math.round(z - sz * k * .7);
       let blocked = false;
-      for (let y = 3; y <= 4 + 2; y++) { const m = w.get(px, y, pz); if (m !== 0 && m !== M.WATER && m !== M.BARS && m !== M.LEAF && m !== M.LEAF2 && m !== M.POLE) { if (y - 2 >= k * 0.55) blocked = true; } }
+      for (let y = 3; y <= 14; y++) { const m = w.get(px, y, pz); if (m !== 0 && m !== M.WATER && m !== M.BARS && m !== M.LEAF && m !== M.LEAF2 && m !== M.POLE) { if (y - 2 >= k * 0.55) blocked = true; } }
       if (blocked) { v = .22; break; }
     }
     for (const t of L.torches) if (t.light) { const d = Math.hypot(x + .5 - t.x, z + .5 - t.z); if (d < 7) v += .5 * (1 - d / 7); }
@@ -175,7 +175,7 @@ class Guard {
 }
 
 function buildGuards(scene, L) {
-  const light = buildLightMap(L), cell = (x, z) => [L.IW - 1 - x + L.OX, z + L.OZ]; // route points are written in courtyard map space
+  const light = buildLightMap(L), cell = (x, z) => [(L.I0W - 1 - x) * L.S + L.OX, z * L.S + L.OZ]; // route points are written in courtyard map space
   const routes = [
     { color: 0xb23a3a, pts: [[15, 19], [15, 26], [17, 26], [17, 19]] },                       // south loop over the bridge
     { color: 0x3a5ab2, pts: [[12, 12], [12, 16], [14, 19], [19, 19], [20, 14], [20, 11], [16, 9]] }, // circles the shrine
