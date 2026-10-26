@@ -50,6 +50,7 @@
 
   // ---- snake + camera ----
   const snake = new Snake(scene, level.world, level.spawnCells, level.spawnTop, bevel);
+  const guards = buildGuards(scene, level);
   const rig = new CamRig(scene, engine, { W: level.W, D: level.D });
   rig.setPreset(1);
 
@@ -92,7 +93,7 @@
 
   // ---- quality tiers ----
   const state = { q: 2, sg: null };
-  const casters = () => [meshes.solid, ...snake.meshes, ...props.casters, ...props.king.getChildMeshes()];
+  const casters = () => [meshes.solid, ...snake.meshes, ...guards.list.flatMap(g => g.meshes), ...props.casters, ...props.king.getChildMeshes()];
   function applyQuality(q) {
     state.q = q;
     const dpr = window.devicePixelRatio || 1, cap = [1, 1.5, 2][q];
@@ -178,6 +179,7 @@
     snake.update(dt, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);
     props.update(time);
+    guards.update(dt, time, snake);
     { const h = snake.head, q = snake.seg[2].position; if (occ.p) { occ.p.a.set(h.x, h.y + .4, h.z, 1.35); occ.p.b.set(q.x, q.y, q.z, 1.35); } }
     scene.render();
     if (++frames % 20 === 0) $('fps').textContent = engine.getFps().toFixed(0) + ' fps';
@@ -197,6 +199,6 @@
   // title card
   setTimeout(() => { if (!window.__failed) $('title').classList.add('gone'); }, 3200);
   $('title').addEventListener('click', () => $('title').classList.add('gone'));
-  window.__game = { occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
+  window.__game = { guards, occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
   window.__ready = true;
 } catch (err) { window.__showErr && window.__showErr((err && err.message) || String(err)); console.error(err); } })();
