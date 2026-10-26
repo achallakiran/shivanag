@@ -14,7 +14,7 @@ class Snake {
     this.path = spawnCells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
     this.cell = { x: spawnCells[0].x, z: spawnCells[0].z, top };
     this.climb = null; this.climbF = 0; this.pitch = 0;
-    this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1;
+    this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1; this.actv = null;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
     this.mv = 0; this.idle = 0; this.lift = 0; this.phase = 0; this.hood = 1;
@@ -51,6 +51,8 @@ class Snake {
         this.dots.push(d); this.meshes.push(d);
       }
     });
+    this.fx = B.MeshBuilder.CreateSphere('fx', { diameter: 1, segments: 10 }, sc); this.fx.isPickable = false; this.fx.setEnabled(false);
+    this.fxMat = new B.StandardMaterial('fxm', sc); this.fxMat.disableLighting = true; this.fxMat.emissiveColor = new B.Color3(1, .9, .4); this.fxMat.diffuseColor = B.Color3.Black(); this.fxMat.alpha = .8; this.fxMat.disableDepthWrite = true; this.fx.material = this.fxMat;
     // head
     const head = new B.TransformNode('head', sc); this.headNode = head;
     const skin = this._mat(0x1f9a5e, .2, .10), hoodMat = this._mat(0x2fb877, .15, .12);
@@ -177,11 +179,19 @@ class Snake {
 
   reset(cells, top) {
     this.path = cells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
-    this.cell = { x: cells[0].x, z: cells[0].z, top }; this.climb = null; this.climbF = 0; this.t = 1; this.wish = null; this.lift = 0; this.idle = 0;
+    this.cell = { x: cells[0].x, z: cells[0].z, top }; this.climb = null; this.climbF = 0; this.t = 1; this.wish = null; this.lift = 0; this.idle = 0; this.actv = null;
     const a = this.path[1], b = this.path[0]; this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
   }
 
   get moving() { return this.t < 1; }
+
+  // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
+  act(type, dx, dz, reach) {
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : .38, dx, dz, reach: reach || 2, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    if (type === 'strike') { this.targetHeading = Math.atan2(dx, dz); this.heading = this.targetHeading; }
+    this.idle = 0;
+  }
 
   update(dt, time) {
     let rem = dt, guard = 0;
@@ -191,7 +201,7 @@ class Snake {
         this.t += use / this.dur; rem -= use;
         if (this.t >= 0.9999) this.t = 1; else break;
       }
-      if (this.wish) { this.tryStep(this.wish); if (this.t === 0) continue; }
+      if (this.wish && !this.actv) { this.tryStep(this.wish); if (this.t === 0) continue; }
       break;
     }
     if (this.climb) this.targetHeading = Math.atan2(this.climb.fx, this.climb.fz);
@@ -206,6 +216,7 @@ class Snake {
     this.phase += dt * (7 * this.mv);
     this.hood += ((moving ? .52 : 1) - this.hood) * (1 - Math.exp(-dt * 7));
 
+    if (this.actv) { this.actv.t += dt; if (this.actv.t >= this.actv.dur) this.actv = null; }
     this._visual(time);
   }
 
@@ -222,10 +233,34 @@ class Snake {
     const lift = this.lift * .62, cf = this.climbF;
     // head
     this.pitch += ((this.climb ? -1.3 : 0) - this.pitch) * (1 - Math.exp(-.016 * 11));
-    this.headNode.position.set(this.head.x, this.head.y + .36 + lift, this.head.z);
+    const A = this.actv; let ox = 0, oy = 0, oz = 0, roll = 0, apitch = 0, hoodK = 0, cur = 0;
+    const off = (sd) => { // visual offset for a body point at distance sd behind the head
+      if (!A) return [0, 0, 0];
+      const k = A.t / A.dur;
+      if (A.type === 'strike') {
+        const c = k < .3 ? 1 - Math.pow(1 - k / .3, 3) : 1 - Math.pow((k - .3) / .7, 2) * (3 - 2 * (k - .3) / .7); // fast out, eased back
+        const w = Math.pow(Math.max(0, 1 - sd / 3.4), 1.6) * c * A.reach; return [A.dx * w, .28 * c * Math.max(0, 1 - sd / 2.4), A.dz * w];
+      }
+      const kk = Math.min(1, Math.max(0, k - sd * .06)), v = Math.sin(Math.PI * kk) * 1.35 * Math.max(.35, 1 - sd * .12);
+      return [-A.dz * A.side * v, .12 * Math.sin(Math.PI * kk), A.dx * A.side * v];
+    };
+    if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
+    this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
     this.headNode.rotation.y = this.heading;
-    this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift;
-    this.hoodRoot.scaling.x = this.hood;
+    this.headNode.rotation.z = roll;
+    this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift + apitch;
+    // impact flash / whoosh puff
+    if (A) {
+      const k = A.t / A.dur, on = A.type === 'strike' ? (k > .22 && k < .62) : (k < .7);
+      this.fx.setEnabled(on);
+      if (on) {
+        const f = A.type === 'strike' ? (k - .22) / .4 : k / .7;
+        this.fx.position.set(this.head.x + (A.type === 'strike' ? ox + A.dx * .7 : 0), this.head.y + .6 + (A.type === 'strike' ? oy : 0), this.head.z + (A.type === 'strike' ? oz + A.dz * .7 : 0));
+        const sc = A.type === 'strike' ? .5 + f * 1.3 : .8 + f * 1.8; this.fx.scaling.setAll(sc);
+        this.fxMat.alpha = (1 - f) * .85; this.fxMat.emissiveColor = A.type === 'strike' ? new B.Color3(1, .9, .4) : new B.Color3(.5, .85, 1);
+      }
+    } else if (this.fx.isEnabled()) this.fx.setEnabled(false);
+    this.hoodRoot.scaling.x = Math.max(this.hood, 1 + .25 * hoodK);
     this.hoodRoot.scaling.y = .85 + .15 * this.hood;
     const fl = Math.max(0, Math.sin(time * 2.4)); const tf = Math.pow(fl, 10);
     this.tongue.scaling.z = .02 + .2 * tf; this.tongue.position.z = .4 + .1 * tf;
@@ -242,6 +277,7 @@ class Snake {
       x += -tz * wv; z += tx * wv;
       const r = sg.s / 2;
       const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
+      const o = off(s); x += o[0]; z += o[2]; y += o[1];
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);

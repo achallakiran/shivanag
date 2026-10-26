@@ -687,7 +687,7 @@ class Snake {
     this.path = spawnCells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
     this.cell = { x: spawnCells[0].x, z: spawnCells[0].z, top };
     this.climb = null; this.climbF = 0; this.pitch = 0;
-    this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1;
+    this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1; this.actv = null;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
     this.mv = 0; this.idle = 0; this.lift = 0; this.phase = 0; this.hood = 1;
@@ -724,6 +724,8 @@ class Snake {
         this.dots.push(d); this.meshes.push(d);
       }
     });
+    this.fx = B.MeshBuilder.CreateSphere('fx', { diameter: 1, segments: 10 }, sc); this.fx.isPickable = false; this.fx.setEnabled(false);
+    this.fxMat = new B.StandardMaterial('fxm', sc); this.fxMat.disableLighting = true; this.fxMat.emissiveColor = new B.Color3(1, .9, .4); this.fxMat.diffuseColor = B.Color3.Black(); this.fxMat.alpha = .8; this.fxMat.disableDepthWrite = true; this.fx.material = this.fxMat;
     // head
     const head = new B.TransformNode('head', sc); this.headNode = head;
     const skin = this._mat(0x1f9a5e, .2, .10), hoodMat = this._mat(0x2fb877, .15, .12);
@@ -850,11 +852,19 @@ class Snake {
 
   reset(cells, top) {
     this.path = cells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
-    this.cell = { x: cells[0].x, z: cells[0].z, top }; this.climb = null; this.climbF = 0; this.t = 1; this.wish = null; this.lift = 0; this.idle = 0;
+    this.cell = { x: cells[0].x, z: cells[0].z, top }; this.climb = null; this.climbF = 0; this.t = 1; this.wish = null; this.lift = 0; this.idle = 0; this.actv = null;
     const a = this.path[1], b = this.path[0]; this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
   }
 
   get moving() { return this.t < 1; }
+
+  // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
+  act(type, dx, dz, reach) {
+    const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
+    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : .38, dx, dz, reach: reach || 2, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    if (type === 'strike') { this.targetHeading = Math.atan2(dx, dz); this.heading = this.targetHeading; }
+    this.idle = 0;
+  }
 
   update(dt, time) {
     let rem = dt, guard = 0;
@@ -864,7 +874,7 @@ class Snake {
         this.t += use / this.dur; rem -= use;
         if (this.t >= 0.9999) this.t = 1; else break;
       }
-      if (this.wish) { this.tryStep(this.wish); if (this.t === 0) continue; }
+      if (this.wish && !this.actv) { this.tryStep(this.wish); if (this.t === 0) continue; }
       break;
     }
     if (this.climb) this.targetHeading = Math.atan2(this.climb.fx, this.climb.fz);
@@ -879,6 +889,7 @@ class Snake {
     this.phase += dt * (7 * this.mv);
     this.hood += ((moving ? .52 : 1) - this.hood) * (1 - Math.exp(-dt * 7));
 
+    if (this.actv) { this.actv.t += dt; if (this.actv.t >= this.actv.dur) this.actv = null; }
     this._visual(time);
   }
 
@@ -895,10 +906,34 @@ class Snake {
     const lift = this.lift * .62, cf = this.climbF;
     // head
     this.pitch += ((this.climb ? -1.3 : 0) - this.pitch) * (1 - Math.exp(-.016 * 11));
-    this.headNode.position.set(this.head.x, this.head.y + .36 + lift, this.head.z);
+    const A = this.actv; let ox = 0, oy = 0, oz = 0, roll = 0, apitch = 0, hoodK = 0, cur = 0;
+    const off = (sd) => { // visual offset for a body point at distance sd behind the head
+      if (!A) return [0, 0, 0];
+      const k = A.t / A.dur;
+      if (A.type === 'strike') {
+        const c = k < .3 ? 1 - Math.pow(1 - k / .3, 3) : 1 - Math.pow((k - .3) / .7, 2) * (3 - 2 * (k - .3) / .7); // fast out, eased back
+        const w = Math.pow(Math.max(0, 1 - sd / 3.4), 1.6) * c * A.reach; return [A.dx * w, .28 * c * Math.max(0, 1 - sd / 2.4), A.dz * w];
+      }
+      const kk = Math.min(1, Math.max(0, k - sd * .06)), v = Math.sin(Math.PI * kk) * 1.35 * Math.max(.35, 1 - sd * .12);
+      return [-A.dz * A.side * v, .12 * Math.sin(Math.PI * kk), A.dx * A.side * v];
+    };
+    if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
+    this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
     this.headNode.rotation.y = this.heading;
-    this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift;
-    this.hoodRoot.scaling.x = this.hood;
+    this.headNode.rotation.z = roll;
+    this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift + apitch;
+    // impact flash / whoosh puff
+    if (A) {
+      const k = A.t / A.dur, on = A.type === 'strike' ? (k > .22 && k < .62) : (k < .7);
+      this.fx.setEnabled(on);
+      if (on) {
+        const f = A.type === 'strike' ? (k - .22) / .4 : k / .7;
+        this.fx.position.set(this.head.x + (A.type === 'strike' ? ox + A.dx * .7 : 0), this.head.y + .6 + (A.type === 'strike' ? oy : 0), this.head.z + (A.type === 'strike' ? oz + A.dz * .7 : 0));
+        const sc = A.type === 'strike' ? .5 + f * 1.3 : .8 + f * 1.8; this.fx.scaling.setAll(sc);
+        this.fxMat.alpha = (1 - f) * .85; this.fxMat.emissiveColor = A.type === 'strike' ? new B.Color3(1, .9, .4) : new B.Color3(.5, .85, 1);
+      }
+    } else if (this.fx.isEnabled()) this.fx.setEnabled(false);
+    this.hoodRoot.scaling.x = Math.max(this.hood, 1 + .25 * hoodK);
     this.hoodRoot.scaling.y = .85 + .15 * this.hood;
     const fl = Math.max(0, Math.sin(time * 2.4)); const tf = Math.pow(fl, 10);
     this.tongue.scaling.z = .02 + .2 * tf; this.tongue.position.z = .4 + .1 * tf;
@@ -915,6 +950,7 @@ class Snake {
       x += -tz * wv; z += tx * wv;
       const r = sg.s / 2;
       const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
+      const o = off(s); x += o[0]; z += o[2]; y += o[1];
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
@@ -1154,7 +1190,7 @@ class Guard {
   }
 
   update(dt, time, snake, mgr) {
-    if (this.state === 'asleep') return;
+    if (this.state === 'asleep') { this._sleepAnim(dt); return; }
     this.acc += dt;
     while (this.acc >= this.stepDur) { this.acc -= this.stepDur; this._tick(); }
     const k = this.t < 1 ? Math.min(1, this.acc / this.stepDur) : 1;
@@ -1208,7 +1244,8 @@ class Guard {
   // sees the snake right now? cone + line of sight + look-up limit
   _sees(snake) {
     const hx = Math.floor(snake.head.x), hz = Math.floor(snake.head.z), hy = snake.head.y;
-    if (Math.hypot(snake.head.x - (this.cell.x + .5), snake.head.z - (this.cell.z + .5)) <= 1.6 && Math.abs(hy - this.cell.top) <= 3) return true; // right next to him
+    { const dx = snake.head.x - (this.cell.x + .5), dz = snake.head.z - (this.cell.z + .5), dd = Math.hypot(dx, dz), fl = Math.hypot(this.face[0], this.face[1]) || 1;
+      if (dd <= 1.6 && Math.abs(hy - this.cell.top) <= 3 && (dx * this.face[0] + dz * this.face[1]) / (fl * (dd || 1)) > -.25) return true; } // right next to him (but not directly behind)
     const q = this.cone.find(c => c.x === hx && c.z === hz && Math.abs(c.top - hy) <= 12);
     if (!q) return false;
     const ex = this.cell.x + .5, ey = this.cell.top + GCFG.eye, ez = this.cell.z + .5;
@@ -1332,13 +1369,29 @@ class Guard {
 
   // put to sleep (bite or counter): lies down, stops seeing, stays asleep for the level
   sleep() {
-    this.state = 'asleep'; this.atk = null; this.hold = true; this.path = []; this.aw = 0; this.sees = false;
+    this.sleepT = 0; this.state = 'asleep'; this.atk = null; this.hold = true; this.path = []; this.aw = 0; this.sees = false;
     this.spear.setEnabled(false); this.marker.setEnabled(false); this.coneMesh.setEnabled(false); this.armR.rotation.x = 0; this.legL.rotation.x = 0; this.legR.rotation.x = 0;
-    this.root.rotation.x = -Math.PI / 2; this.root.position.y = this.cell.top + .7;
+    if (!this.stars) { this.stars = []; const sm = new B.StandardMaterial('stm', this.scene); sm.disableLighting = true; sm.emissiveColor = new B.Color3(1, .9, .3); sm.diffuseColor = B.Color3.Black();
+      for (let i = 0; i < 3; i++) { const m = B.MeshBuilder.CreateBox('star', { size: .28 }, this.scene); m.material = sm; m.isPickable = false; this.stars.push(m); } }
+    for (const m of this.stars) m.setEnabled(true);
+  }
+
+  // topple over with a hop, then dizzy stars circle the head
+  _sleepAnim(dt) {
+    this.sleepT += dt; const k = Math.min(1, this.sleepT / .55), e = 1 - Math.pow(1 - k, 3);
+    this.root.rotation.x = -Math.PI / 2 * e;
+    this.root.position.y = this.cell.top + .7 * e + Math.sin(Math.PI * Math.min(1, k * 1.4)) * .9;
+    this.root.position.x = this.cell.x + .5; this.root.position.z = this.cell.z + .5;
+    const f = this.face, hl = Math.hypot(f[0], f[1]) || 1;
+    for (let i = 0; i < this.stars.length; i++) {
+      const a = this.sleepT * 4 + i * 2.094;
+      this.stars[i].position.set(this.cell.x + .5 + f[0] / hl * 3.1 * e + Math.cos(a) * .8, this.cell.top + 1.1 + Math.sin(this.sleepT * 5 + i) * .12, this.cell.z + .5 + f[1] / hl * 3.1 * e + Math.sin(a) * .8);
+      this.stars[i].rotation.y = a;
+    }
   }
 
   reset() {
-    this.root.rotation.x = 0; this.coneMesh.setEnabled(true);
+    this.root.rotation.x = 0; this.coneMesh.setEnabled(true); if (this.stars) for (const m of this.stars) m.setEnabled(false);
     this.cell = { x: this.home[0][0], z: this.home[0][1], top: 2 };
     this.from = { x: this.cell.x + .5, z: this.cell.z + .5, y: 2 }; this.to = this.from; this.t = 1; this.acc = 0;
     this.route = this.home.map(r => r.slice()); this.wp = 0; this.path = []; this.state = 'patrol'; this.aw = 0; this.atk = null; this.cd = 0; this.hold = false;
@@ -1389,7 +1442,7 @@ function buildGuards(scene, L) {
   guards.push(new Guard(scene, L, light, outer.pts, { color: outer.color }));
   const mgr = {
     list: guards, light, hearts: 3, invuln: 0, lost: 0, events: [], rings: [],
-    meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
+    timers: [], meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
     hitCheck(tx, tz, ty, snake) { return Math.hypot(snake.head.x - tx, snake.head.z - tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - ty) <= 3 && this.invuln <= 0; },
     damage(g) { if (this.invuln > 0 || this.hearts <= 0) return; this.hearts--; this.invuln = 1.4; this.events.push({ t: 'hit', hearts: this.hearts }); if (this.hearts <= 0) this.events.push({ t: 'lost' }); },
     shout(g) {
@@ -1405,6 +1458,7 @@ function buildGuards(scene, L) {
     tick(dt, snake) {
       this.slow = Math.max(0, this.slow - dt); this.dip = Math.max(0, this.dip - dt); this.escCd = Math.max(0, this.escCd - dt);
       if (this.dashT > 0) { this.dashT -= dt; if (this.dashT <= 0) snake.speedMul = 1; }
+      for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
       this.window = this._slipGuard(snake) !== null;
       this.bite = this._biteTarget(snake);
       return this.dip > 0 ? .18 : this.slow > 0 ? .3 : 1;
@@ -1432,17 +1486,27 @@ function buildGuards(scene, L) {
     },
     // Attack: bite a guard who hasn't noticed the snake
     attack(snake) {
-      const g = this._biteTarget(snake); if (!g) return false;
-      g.sleep(); this.addMeter(.15); this.dip = Math.max(this.dip, .7); this.invuln = Math.max(this.invuln, .8);
-      this.events.push({ t: 'bite' }); return true;
+      if (snake.actv) return false;
+      const g = this._biteTarget(snake);
+      if (!g) { // a lunge at thin air, so the button always responds
+        const h = snake.heading; snake.act('strike', Math.sin(h), Math.cos(h), 1.6); return false;
+      }
+      const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz);
+      snake.act('strike', dx, dz, Math.max(.8, d - .5)); this.invuln = Math.max(this.invuln, .9);
+      this.timers.push({ t: .13, fn: () => { if (g.state === 'asleep') return; g.sleep(); this.addMeter(.15); this.dip = Math.max(this.dip, .7); this.events.push({ t: 'bite' }); } });
+      return true;
     },
     // Escape: slip + counter in the last 0.3s before a hit, else spend a full meter on slow motion, else dash
     escape(snake) {
       const g = this._slipGuard(snake);
       if (g) {
-        const a = g.atk; a.slipped = true; this.invuln = Math.max(this.invuln, .9); this.dip = Math.max(this.dip, .8);
-        if (a.kind === 'melee') { g.sleep(); this.addMeter(.35); this.events.push({ t: 'counter' }); }
-        else { g.cd += 1.2; this.addMeter(.2); this.events.push({ t: 'dodge' }); }
+        const a = g.atk; a.slipped = true; this.invuln = Math.max(this.invuln, 1.2);
+        const gx = g.cell.x + .5 - snake.head.x, gz = g.cell.z + .5 - snake.head.z, gd = Math.hypot(gx, gz) || 1;
+        snake.act('dodge', gx, gz); this.events.push({ t: 'dodge' });   // weave away from the hit, then strike back
+        if (a.kind === 'melee') {
+          this.timers.push({ t: .3, fn: () => { snake.act('strike', gx, gz, Math.max(.8, gd - .5)); } });
+          this.timers.push({ t: .43, fn: () => { g.sleep(); this.addMeter(.35); this.dip = Math.max(this.dip, .8); this.events.push({ t: 'counter' }); } });
+        } else { g.cd += 1.2; this.addMeter(.2); }
         return 'counter';
       }
       if (this.meter >= 1 && this.slow <= 0) { this.slow = 3; this.meter = 0; this.events.push({ t: 'slow' }); return 'slow'; }
@@ -1455,7 +1519,7 @@ function buildGuards(scene, L) {
       for (const g of guards) g.update(dt, time, snake, this);
       for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t += dt; const k = r.t / .9; r.m.scaling.set(1 + k * 14, 1 + k * 14, 1 + k * 14); r.m.rotation.x = Math.PI / 2; r.m.material.alpha = Math.max(0, .9 * (1 - k)); if (k >= 1) { r.m.dispose(); this.rings.splice(i, 1); } }
     },
-    reset() { this.hearts = 3; this.invuln = 0; this.meter = 0; this.slow = 0; this.dip = 0; this.escCd = 0; this.dashT = 0; for (const g of guards) g.reset(); },
+    reset() { this.hearts = 3; this.invuln = 0; this.meter = 0; this.slow = 0; this.dip = 0; this.escCd = 0; this.dashT = 0; this.timers = []; for (const g of guards) g.reset(); },
   };
   return mgr;
 }
