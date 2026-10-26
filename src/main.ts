@@ -61,7 +61,7 @@ function main(): void {
   const big = el('position:fixed;top:30%;left:50%;transform:translate(-50%,-50%);color:#fff;font:800 44px system-ui;text-shadow:0 2px 8px #000;text-align:center;pointer-events:none;white-space:nowrap');
   const small = el('position:fixed;top:calc(30% + 36px);left:50%;transform:translateX(-50%);color:#fff;font:600 16px system-ui;text-shadow:0 1px 4px #000;pointer-events:none;white-space:nowrap');
   const help = el('position:fixed;bottom:10px;left:50%;transform:translateX(-50%);color:#fffd;font:600 14px system-ui;text-shadow:0 1px 4px #000;pointer-events:none;text-align:center');
-  help.textContent = 'Pick a stance, then swipe when the ball arrives. Swipe down = straight. Faster swipe = harder shot.';
+  help.textContent = 'Pick a shot, then swipe when the ball arrives. Swipe down = straight. Faster swipe = harder shot.';
   const ver = el('position:fixed;right:8px;bottom:6px;color:#fff9;font:11px ui-monospace,monospace;pointer-events:none');
   ver.textContent = `v${app.version} (${app.build})`;
   const again = document.createElement('button');
@@ -135,7 +135,7 @@ function main(): void {
     // batsman
     const s = match.swing;
     const elapsed = s ? match.t - s.start : -1;
-    const target = STANCES[match.stance]!.pose; // always waiting with the bat lifted
+    const target = STANCES[0]!.pose; // always waiting in the backlift; the chosen shot is played during the swing
     if (s && elapsed < s.toContact + SWING_TOTAL) {
       cur = swingPose(s.stance, elapsed, s.toContact, -s.dir);
     } else {

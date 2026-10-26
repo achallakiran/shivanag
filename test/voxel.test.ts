@@ -96,3 +96,13 @@ test('the bat and hands never pass through the body: every stance and every fram
   });
   assert.deepEqual(bad.slice(0, 12), []);
 });
+
+test('every shot starts from the same backlift and returns to it', () => {
+  const ready = STANCES[0]!.pose;
+  STANCES.forEach((_, i) => {
+    assert.deepEqual(swingPose(i, 0, 0.2), ready);
+    const end = swingPose(i, 5, 0.2);
+    assert.ok(Math.abs(end.root.z - ready.root.z) < 1e-6 && Math.abs(end.root.yaw - ready.root.yaw) < 1e-6);
+    assert.ok(end.bat.pos.every((v, k) => Math.abs(v - ready.bat.pos[k]!) < 1e-6) && Math.abs(end.bat.az - ready.bat.az) < 1e-6);
+  });
+});

@@ -3,7 +3,7 @@ import { NullEngine } from '@babylonjs/core/Engines/nullEngine';
 import { createStage } from '../src/voxel/stage';
 import { createBatsman, type PoseData } from '../src/voxel/rig';
 import { STANCES, lerpPose } from '../src/voxel/poses';
-import { CLIPS, withKey, type Key } from '../src/game/swing';
+import { CLIPS, withKey, approach, type Key } from '../src/game/swing';
 import { clearance } from '../src/voxel/clearance';
 
 const stage = createStage(new NullEngine());
@@ -63,7 +63,7 @@ STANCES.forEach((s, i) => {
     const key: Key = CLIPS[i]![k];
     const base = s.pose;
     const contact = withKey(base, CLIPS[i]!.contact, 0);
-    path = k === 'contact' ? (p) => [0.3, 0.55, 0.8, 1].map((t) => lerpPose(base, p, t)) : (p) => [0.25, 0.5, 0.75, 1].map((t) => lerpPose(contact, p, t)).concat([0.3, 0.6].map((t) => lerpPose(p, base, t)));
+    path = k === 'contact' ? (p) => [0.2, 0.35, 0.5, 0.65, 0.8, 1].map((t) => approach(i, p, t)) : (p) => [0.25, 0.5, 0.75, 1].map((t) => lerpPose(contact, p, t)).concat([0.3, 0.6].map((t) => lerpPose(p, STANCES[0]!.pose, t)));
     const f = fit(withKey(s.pose, key, 0), { spine: true });
     path = (p) => [p];
     out.push(`CLIP ${i} ${s.name} ${k}: { ${fmtBat(f.pose.bat)}, spine: [${r(f.pose.spine[0] - s.pose.spine[0], 0)}, ${r(f.pose.spine[1] - s.pose.spine[1], 0)}], elbowOut: ${r(f.pose.elbowOut)} }  worst ${r(f.worst * 100, 1)}cm grip ${r(man.apply(f.pose).gripError, 3)}`);
