@@ -1,6 +1,6 @@
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 1.5, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 2.5, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
@@ -175,11 +175,13 @@ class Guard {
 }
 
 function buildGuards(scene, L) {
-  const light = buildLightMap(L), cell = (x, z) => [L.W - 1 - x, z]; // route points are written in map space
+  const light = buildLightMap(L), cell = (x, z) => [L.IW - 1 - x + L.OX, z + L.OZ]; // route points are written in courtyard map space
   const routes = [
     { color: 0xb23a3a, pts: [[15, 19], [15, 26], [17, 26], [17, 19]] },                       // south loop over the bridge
     { color: 0x3a5ab2, pts: [[12, 12], [12, 16], [14, 19], [19, 19], [20, 14], [20, 11], [16, 9]] }, // circles the shrine
   ];
+  const outer = { color: 0x3a9a5a, pts: [[14, L.D - L.OZ + 2], [L.W - 15, L.D - L.OZ + 2]] }; // patrols the outer south lane
   const guards = routes.map(r => new Guard(scene, L, light, r.pts.map(p => cell(p[0], p[1])), { color: r.color }));
+  guards.push(new Guard(scene, L, light, outer.pts, { color: outer.color }));
   return { list: guards, light, update(dt, time, snake) { for (const g of guards) g.update(dt, time, snake); } };
 }

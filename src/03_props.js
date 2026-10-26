@@ -109,14 +109,14 @@ function buildProps(scene, L) {
 
   // ---- cell bars (real thin bars, not voxels) ----
   const barMat = std(0x5b4a3c, .55); barMat.specularPower = 30;
-  const bz = 6.5;
+  const bz = L.barZ;
   L.bars.forEach(x => {
     const bar = B.MeshBuilder.CreateCylinder('bar', { diameter: .2, height: 2.0, tessellation: 8 }, scene);
     bar.position.set(x, 3.0, bz); bar.material = barMat; P.casters.push(bar);
   });
   [2.35, 3.6].forEach(y => {
     const rail = B.MeshBuilder.CreateBox('rail', { width: 7.0, height: .14, depth: .2 }, scene);
-    rail.position.set(L.W - 16.5, y, bz); rail.material = barMat; P.casters.push(rail);
+    rail.position.set(L.railX, y, bz); rail.material = barMat; P.casters.push(rail);
   });
 
   // ---- water ----

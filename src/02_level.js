@@ -1,7 +1,34 @@
 /* Shivanag — level 1 "The Naga's Courtyard" (designed in map space, mirrored on X for LH camera) */
 const LV = { W: 32, D: 30 };
 
-function buildLevel() {
+
+// tall trees with a limb toward (cx, cz), bushes and rocks
+function vegetation(w, cx, cz) {
+  const tree = (x, z, h0) => {
+    const H = h0 + 4; // tall trunk: tree tops are well above the courtyard
+    w.box(x, 2, z, x, 1 + H, z, M.TRUNK);
+    // a limb off the trunk toward the courtyard centre, three voxels below the trunk top: the snake climbs the trunk on that side
+    // and mounts the limb from below; a clear gap separates it from the leaf crown above
+    const tx = cx - x, tz = cz - z, bx = Math.abs(tx) >= Math.abs(tz) ? Math.sign(tx) : 0, bz = bx ? 0 : Math.sign(tz);
+    for (let k = 1; k <= (h0 >= 3 ? 3 : 2); k++) if (w.get(x + bx * k, H - 2, z + bz * k) === 0) w.set(x + bx * k, H - 2, z + bz * k, M.BRANCH);
+    const cy = 2 + H;
+    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = -1; dy <= 2; dy++) {
+      const r2 = dx * dx + dz * dz + dy * dy * 1.6;
+      if (r2 <= 3.3 + hash3(x + dx, cy + dy, z + dz) * 1.5 && w.get(x + dx, cy + dy, z + dz) === 0)
+        w.set(x + dx, cy + dy, z + dz, hash3(x + dx, dy, z + dz) > .5 ? M.LEAF : M.LEAF2);
+    }
+  };
+  const bush = (x, z) => {
+    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy <= 1; dy++) {
+      if (Math.abs(dx) + Math.abs(dz) + dy * 1.2 <= 2.2 && w.get(x + dx, 2 + dy, z + dz) === 0)
+        w.set(x + dx, 2 + dy, z + dz, hash3(x + dx, dy, z + dz) > .5 ? M.LEAF : M.LEAF2);
+    }
+  };
+  const rock = (x, z, tall) => { w.set(x, 2, z, M.ROCK); if (tall) w.set(x, 3, z, M.ROCK2); };
+  return { tree, bush, rock };
+}
+
+function buildCourtyard() {
   const W = LV.W, D = LV.D;
   const w = new VoxelWorld(W, D, -8, 14);
   const rnd = mulberry32(11);
@@ -107,27 +134,7 @@ function buildLevel() {
   for (const t of torches) { w.set(t.x, 2, t.z, M.BASE); w.set(t.x, 3, t.z, M.PILLAR); }
 
   // ---- vegetation ----
-  const tree = (x, z, h0) => {
-    const H = h0 + 4; // tall trunk: tree tops are well above the courtyard
-    w.box(x, 2, z, x, 1 + H, z, M.TRUNK);
-    // a limb off the trunk toward the courtyard centre, three voxels below the trunk top: the snake climbs the trunk on that side
-    // and mounts the limb from below; a clear gap separates it from the leaf crown above
-    const tx = 16 - x, tz = 14 - z, bx = Math.abs(tx) >= Math.abs(tz) ? Math.sign(tx) : 0, bz = bx ? 0 : Math.sign(tz);
-    for (let k = 1; k <= (h0 >= 3 ? 3 : 2); k++) if (w.get(x + bx * k, H - 2, z + bz * k) === 0) w.set(x + bx * k, H - 2, z + bz * k, M.BRANCH);
-    const cy = 2 + H;
-    for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = -1; dy <= 2; dy++) {
-      const r2 = dx * dx + dz * dz + dy * dy * 1.6;
-      if (r2 <= 3.3 + hash3(x + dx, cy + dy, z + dz) * 1.5 && w.get(x + dx, cy + dy, z + dz) === 0)
-        w.set(x + dx, cy + dy, z + dz, hash3(x + dx, dy, z + dz) > .5 ? M.LEAF : M.LEAF2);
-    }
-  };
-  const bush = (x, z) => {
-    for (let dx = -1; dx <= 1; dx++) for (let dz = -1; dz <= 1; dz++) for (let dy = 0; dy <= 1; dy++) {
-      if (Math.abs(dx) + Math.abs(dz) + dy * 1.2 <= 2.2 && w.get(x + dx, 2 + dy, z + dz) === 0)
-        w.set(x + dx, 2 + dy, z + dz, hash3(x + dx, dy, z + dz) > .5 ? M.LEAF : M.LEAF2);
-    }
-  };
-  const rock = (x, z, tall) => { w.set(x, 2, z, M.ROCK); if (tall) w.set(x, 3, z, M.ROCK2); };
+  const { tree, bush, rock } = vegetation(w, 16, 14);
   [[3, 10, 3], [6, 16, 2], [2, 18, 2], [4, 3, 3], [7, 4, 2], [26, 3, 3], [29, 2, 3], [3, 27, 2], [10, 28, 2], [27, 27, 2], [30, 25, 2]]
     .forEach(([x, z, h]) => tree(x, z, h));
   [[5, 9], [8, 18], [2, 13], [10, 3], [23, 4], [13, 25], [19, 26], [7, 27]].forEach(([x, z]) => bush(x, z));
@@ -145,5 +152,46 @@ function buildLevel() {
     spawnCells: [[15, 14], [15, 15], [16, 15], [17, 15], [17, 14], [17, 13], [16, 13], [15, 13]].map(c => cell(c[0], c[1])),
     spawnTop: 5,
     bars: bars.map(x => W - (x + .5)),
+  };
+}
+
+
+/* the full island: the hand-designed courtyard sits in the middle of a larger grassy island with outer lawns, trees and a patrol lane */
+const OX = 10, OZ = 8;
+function buildLevel() {
+  const I = buildCourtyard(), W = I.W + 2 * OX, D = I.D + 2 * OZ;
+  const w = new VoxelWorld(W, D, -8, 16);
+  // underside, base slab, outer floor
+  for (let k = 1; k <= 8; k++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    const edge = Math.min(x, W - 1 - x, z, D - 1 - z), inset = k * 1.8 + hash3(x, k, z) * 1.7;
+    if (edge >= inset) w.set(x, -k, z, (k & 1) ? M.ROCK : M.ROCK2);
+  }
+  for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
+    w.set(x, 0, z, M.BASE);
+    const r = hash3(x, 9, z); let m = ((x * 3 + z * 5) % 7 < 3) ? M.GRASS : M.GRASS2;
+    if (r > .975) m = M.FLOWER1; else if (r > .95) m = M.FLOWER2;
+    w.set(x, 1, z, m);
+  }
+  for (let x = 0; x < W; x++) for (let z = 22 + OZ; z <= 23 + OZ; z++) w.set(x, 1, z, M.WATER); // the moat runs the full width
+  // outer patrol lane (sand) along the south lawn
+  for (let x = 8; x < W - 8; x++) for (let z = D - OZ + 2; z <= D - OZ + 3; z++) w.set(x, 1, z, ((x + z) & 1) ? M.SAND : M.SAND2);
+  // drop the courtyard in
+  for (let z = 0; z < I.D; z++) for (let y = 1; y <= 14; y++) for (let x = 0; x < I.W; x++) w.set(x + OX, y, z + OZ, I.world.get(x, y, z));
+  // outer scenery (world coordinates; limbs point to the island centre)
+  const inside = (x, z, m) => x >= OX - m && x < OX + I.W + m && z >= OZ - m && z < OZ + I.D + m;
+  const veg = vegetation(w, W / 2, D / 2);
+  for (let gz = 3; gz < D - 2; gz += 5) for (let gx = 3; gx < W - 2; gx += 5) {
+    const x = gx + Math.floor(hash3(gx, 3, gz) * 3), z = gz + Math.floor(hash3(gx, 4, gz) * 3), r = hash3(gx, 5, gz);
+    if (inside(x, z, 3) || (z >= 22 + OZ - 2 && z <= 23 + OZ + 2) || (z >= D - OZ + 1 && z <= D - OZ + 4 && x >= 6 && x < W - 6)) continue;
+    if (r < .42) veg.tree(x, z, 2 + (r < .2 ? 1 : 0)); else if (r < .72) veg.bush(x, z); else veg.rock(x, z, r > .86);
+  }
+  const cell = (c) => ({ x: c.x + OX, z: c.z + OZ });
+  return {
+    world: w, W, D, IW: I.W, OX, OZ,
+    torches: I.torches.map(t => ({ x: t.x + OX, z: t.z + OZ, light: t.light })),
+    king: { x: I.king.x + OX, y: I.king.y, z: I.king.z + OZ },
+    linga: { x: I.linga.x + OX, top: I.linga.top, z: I.linga.z + OZ },
+    spawnCells: I.spawnCells.map(cell), spawnTop: I.spawnTop,
+    bars: I.bars.map(x => x + OX), barZ: 6.5 + OZ, railX: I.W - 16.5 + OX,
   };
 }
