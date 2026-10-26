@@ -1044,7 +1044,7 @@ class OccPlugin extends B.MaterialPluginBase {
 
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { susp: .3, fill: .75, decay: .3, shout: 16, melee: 2.4, rMin: 2.6, rMax: 9, windup: .85, flight: .45, cool: 1.5, hitR: 1.1, search: 6, lose: 3.2, alertStep: .34, step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { susp: .3, fill: .75, decay: .3, shout: 16, melee: 2.4, rMin: 2.6, rMax: 11, windup: .85, flight: .45, cool: 1.5, hitR: 1.1, search: 6, lose: 3.2, alertStep: .34, step: .55, wait: 1.0, range: 13, darkRange: 4.5, halfAng: Math.PI * .31, hear: 7, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
@@ -1254,7 +1254,10 @@ class Guard {
       this.last = { x: snake.head.x, z: snake.head.z }; this.unseen = 0;
     } else {
       this.unseen += dt;
-      if (this.state === 'patrol' || this.state === 'susp') this.aw = Math.max(0, this.aw - dt * GCFG.decay);
+      // noise: a moving snake close by is heard even when not seen (foliage muffles nothing, Wait is silent)
+      if ((this.state === 'patrol' || this.state === 'susp') && (snake.moving || snake.wish) && dist <= GCFG.hear && Math.abs(snake.head.y - this.cell.top) <= 6) {
+        this.aw = Math.min(.99, this.aw + dt * .35 * (1 + (GCFG.hear - dist) / GCFG.hear)); this.last = { x: snake.head.x, z: snake.head.z };
+      } else if (this.state === 'patrol' || this.state === 'susp') this.aw = Math.max(0, this.aw - dt * GCFG.decay);
     }
     switch (this.state) {
       case 'patrol':
@@ -1262,7 +1265,7 @@ class Guard {
         break;
       case 'susp':
         this.hold = true;
-        if (seen && this.last) { this.scan -= dt; if (this.scan <= 0) { this._faceTo(this.last.x, this.last.z); this.scan = .3; } }
+        if (this.last) { this.scan -= dt; if (this.scan <= 0) { this._faceTo(this.last.x, this.last.z); this.scan = .3; } }
         if (this.aw >= 1) { this._setState('alert'); mgr.shout(this); }
         else if (this.aw < .1) { this._setState('patrol'); this.path = []; this._nextLeg(); }
         break;
