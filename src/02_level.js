@@ -107,12 +107,14 @@ function buildLevel() {
   for (const t of torches) { w.set(t.x, 2, t.z, M.BASE); w.set(t.x, 3, t.z, M.PILLAR); }
 
   // ---- vegetation ----
-  const tree = (x, z, h) => {
-    w.box(x, 2, z, x, 1 + h, z, M.TRUNK);
-    // a branch off the trunk top toward the courtyard centre: the snake can perch here and wait
+  const tree = (x, z, h0) => {
+    const H = h0 + 4; // tall trunk: tree tops are well above the courtyard
+    w.box(x, 2, z, x, 1 + H, z, M.TRUNK);
+    // a limb off the trunk toward the courtyard centre, three voxels below the trunk top: the snake climbs the trunk on that side
+    // and mounts the limb from below; a clear gap separates it from the leaf crown above
     const tx = 16 - x, tz = 14 - z, bx = Math.abs(tx) >= Math.abs(tz) ? Math.sign(tx) : 0, bz = bx ? 0 : Math.sign(tz);
-    for (let k = 1; k <= (h >= 3 ? 3 : 2); k++) if (w.get(x + bx * k, 1 + h, z + bz * k) === 0) w.set(x + bx * k, 1 + h, z + bz * k, M.BRANCH);
-    const cy = 2 + h;
+    for (let k = 1; k <= (h0 >= 3 ? 3 : 2); k++) if (w.get(x + bx * k, H - 2, z + bz * k) === 0) w.set(x + bx * k, H - 2, z + bz * k, M.BRANCH);
+    const cy = 2 + H;
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = -1; dy <= 2; dy++) {
       const r2 = dx * dx + dz * dz + dy * dy * 1.6;
       if (r2 <= 3.3 + hash3(x + dx, cy + dy, z + dz) * 1.5 && w.get(x + dx, cy + dy, z + dz) === 0)
