@@ -84,3 +84,17 @@ test('stances suit different lengths', () => {
   assert.ok(stanceFit(1, 7, 1) > stanceFit(2, 7, 1));
   assert.ok(stanceFit(3, 3, 0.3) > stanceFit(3, 3, 1.2));
 });
+
+test('the stance can be changed between balls, but not during a swing in flight', () => {
+  const m = new Match();
+  m.setStance(2);
+  assert.equal(m.stance, 2);
+  let g = 0;
+  while (m.phase !== 'flight' && g++ < 240 * 10) m.step();
+  m.swipe(0, 1, 2);
+  m.setStance(3);
+  assert.equal(m.stance, 2);
+  while (m.phase !== 'wait' && g++ < 240 * 30) m.step();
+  m.setStance(4);
+  assert.equal(m.stance, 4);
+});

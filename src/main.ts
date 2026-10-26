@@ -5,7 +5,7 @@ import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
 import { StandardMaterial } from '@babylonjs/core/Materials/standardMaterial';
 import { createStage, frame } from './voxel/stage';
 import { createBatsman, type PoseData } from './voxel/rig';
-import { lerpPose, READY_GROUNDED, STANCES } from './voxel/poses';
+import { lerpPose, STANCES } from './voxel/poses';
 import { swingPose, SWING_TOTAL } from './game/swing';
 import { Match, BALLS_PER_OVER } from './game/match';
 import { FixedLoop } from './core/loop';
@@ -104,7 +104,7 @@ function main(): void {
   canvas.addEventListener('pointerdown', () => sound.unlock());
   let seen = 0;
 
-  let cur: PoseData = READY_GROUNDED;
+  let cur: PoseData = STANCES[0]!.pose;
   let camT: V3 = [...CAMS[0]!.target];
   let camFill = CAMS[0]!.fill;
   let hits = 0;
@@ -137,8 +137,7 @@ function main(): void {
     // batsman
     const s = match.swing;
     const elapsed = s ? match.t - s.start : -1;
-    const waiting = match.phase === 'wait' || match.phase === 'over' || (match.phase === 'result' && !s);
-    const target = match.stance === 0 && waiting ? READY_GROUNDED : STANCES[match.stance]!.pose;
+    const target = STANCES[match.stance]!.pose; // always waiting with the bat lifted
     if (s && elapsed < s.toContact + SWING_TOTAL) {
       cur = swingPose(s.stance, elapsed, s.toContact, -s.dir);
     } else {

@@ -68,7 +68,7 @@ export class Match {
   }
 
   setStance(i: number): void {
-    if (!this.swing) this.stance = i;
+    if (!this.swing || this.phase !== 'flight') this.stance = i; // only a swing in flight locks the stance
   }
 
   private say(m: string, d = ''): void {
