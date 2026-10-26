@@ -33,8 +33,8 @@ export interface StancePose {
   hx: number; // hands at rest, from the shoulder centre: along the chest direction (toward the off side),
   hy: number; //   up (negative is below the shoulders, scaled by body height),
   hz: number; //   and toward the bowler across the hips
-  blBack: number; // backlift: bat tilted back from vertical toward the keeper, radians
-  blSide: number; // backlift: bat tilted toward the off side (gully), radians
+  blBack: number; // backlift: bat tilt from vertical, radians (0 upright, about 2.6 grounded)
+  blSide: number; // backlift: azimuth of the tilt, radians (0 toward the keeper, pi/2 toward the off side)
 }
 
 export interface StanceState {
@@ -51,7 +51,7 @@ export function createStance(c: StanceCfg, rightHanded: boolean): StanceState {
 }
 
 // Where the feet and body want to be. Values are written for a right-hander as (toward the off side, toward the bowler).
-export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): StancePose {
+export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean, lifted = true): StancePose {
   const f = rightHanded ? -1 : 1; // X = f * (distance toward the off side)
   let ff: [number, number];
   let bf: [number, number];
@@ -60,8 +60,8 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
   let wf = 0.5;
   let open = 0;
   let hands: [number, number, number] = [0.1, -0.46, 0.1];
-  let blBack = 0.45;
-  let blSide = 0.12;
+  let blBack = 0.6; // tilt of the lifted bat from vertical
+  let blSide = 1.0; // azimuth of that tilt: 0 back toward the keeper, pi/2 toward the off side (gully)
   let bfLift = 0;
   switch (gate) {
     case BACK: // back and across: rear foot goes back toward off stump, weight on it, upright, bat high
@@ -71,9 +71,9 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
       lean = 0.02;
       wf = 0.2;
       open = -0.2;
-      hands = [0.08, -0.3, 0.08];
-      blBack = 0.75;
-      blSide = 0.15;
+      hands = [0.04, -0.26, -0.02];
+      blBack = 0.5;
+      blSide = 0.9;
       break;
     case FRONT: // stride to the pitch of the ball, head over the knee, bat comes down straight
       ff = [0.22, c.frontStride];
@@ -82,9 +82,9 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
       lean = 0.3;
       wf = 0.78;
       open = -0.1;
-      hands = [0.14, -0.4, 0.14];
-      blBack = 0.5;
-      blSide = 0.1;
+      hands = [0.08, -0.36, 0.0];
+      blBack = 0.62;
+      blSide = 1.0;
       bfLift = 0.03;
       break;
     case SWEEP: // front foot forward and the back knee down; low and square-on, bat back low
@@ -94,9 +94,9 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
       lean = 0.42;
       wf = 0.62;
       open = 0.5;
-      hands = [0.2, -0.3, 0.2];
-      blBack = 1.0;
-      blSide = 0.05;
+      hands = [0.14, -0.3, 0.1];
+      blBack = 1.2;
+      blSide = 0.5;
       break;
     case REVERSE: // as the sweep, but turned more toward the bowler, bat held out front and low
       ff = [0.3, c.sitReach * 0.9];
@@ -105,9 +105,9 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
       lean = 0.4;
       wf = 0.6;
       open = 0.95;
-      hands = [0.2, -0.3, 0.2];
-      blBack = 0.9;
-      blSide = -0.2;
+      hands = [0.14, -0.3, 0.1];
+      blBack = 1.1;
+      blSide = 1.2;
       break;
     case STEP: // down the pitch: long stride, back heel up, bat high
       ff = [0.1, c.stepOut];
@@ -116,14 +116,20 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean): St
       lean = 0.25;
       wf = 0.7;
       open = -0.1;
-      hands = [0.16, -0.36, 0.14];
-      blBack = 0.9;
-      blSide = 0.1;
+      hands = [0.08, -0.3, 0.0];
+      blBack = 0.45;
+      blSide = 0.8;
       bfLift = 0.05;
       break;
     default: // READY: shoulder-width, parallel to the crease, knees soft, weight even, bat low behind the back foot
       ff = [0.2, 0.08];
       bf = [-0.22, -0.06];
+  }
+  if (!lifted) {
+    // Grounded: the bat rests on the ground behind the toes, hands low and in front of the body.
+    blBack = 2.6;
+    blSide = 0.3;
+    hands = [hands[0], Math.min(hands[1], -0.62), 0.22];
   }
   return {
     ffx: f * ff[0], ffz: ff[1], bfx: f * bf[0], bfz: bf[1], ffLift: 0, bfLift, drop, lean, wf, line: 0, open,
@@ -164,10 +170,10 @@ function moveFoot(p: StancePose, which: 'ff' | 'bf', tx: number, tz: number, spe
 
 // One tick: take the stance the player has selected, then move the body toward it at limited speeds.
 // While `locked` (a swing is under way) the feet stay planted: the stance cannot change.
-export function stepStance(st: StanceState, sel: number, dt: number, c: StanceCfg, rightHanded: boolean, locked = false): void {
+export function stepStance(st: StanceState, sel: number, dt: number, c: StanceCfg, rightHanded: boolean, locked = false, lifted = true): void {
   Object.assign(st.prev, st.pose);
   if (!locked && sel >= 0 && sel < STANCE_COUNT) st.gate = sel;
-  const t = targetPose(st.gate, c, rightHanded);
+  const t = targetPose(st.gate, c, rightHanded, lifted);
   const p = st.pose;
   moveFoot(p, 'ff', t.ffx, t.ffz, c.footSpeed, dt, 0.15);
   moveFoot(p, 'bf', t.bfx, t.bfz, c.footSpeed, dt, 0.15);
@@ -175,8 +181,8 @@ export function stepStance(st: StanceState, sel: number, dt: number, c: StanceCf
   p.lean = approach(p.lean, t.lean, c.leanSpeed * dt);
   p.wf = approach(p.wf, t.wf, c.weightSpeed * dt);
   p.open = approach(p.open, t.open, c.turnSpeed * dt);
-  p.blBack = approach(p.blBack, t.blBack, c.turnSpeed * dt);
-  p.blSide = approach(p.blSide, t.blSide, c.turnSpeed * dt);
+  p.blBack = approach(p.blBack, t.blBack, c.turnSpeed * 2.5 * dt);
+  p.blSide = approach(p.blSide, t.blSide, c.turnSpeed * 2.5 * dt);
   p.hx = approach(p.hx, t.hx, c.handSpeed * dt);
   p.hy = approach(p.hy, t.hy, c.handSpeed * dt);
   p.hz = approach(p.hz, t.hz, c.handSpeed * dt);

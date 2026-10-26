@@ -68,7 +68,7 @@ test('the hands, chest turn and backlift also move at limited speeds', () => {
   for (let i = 0; i < 240; i++) {
     stepStance(st, BACK, dt, c, true);
     assert.ok(Math.abs(st.pose.open - prev.open) <= c.turnSpeed * dt + 1e-12);
-    assert.ok(Math.abs(st.pose.blBack - prev.blBack) <= c.turnSpeed * dt + 1e-12);
+    assert.ok(Math.abs(st.pose.blBack - prev.blBack) <= c.turnSpeed * 2.5 * dt + 1e-12);
     assert.ok(Math.abs(st.pose.hy - prev.hy) <= c.handSpeed * dt + 1e-12);
     prev = { ...st.pose };
   }
@@ -121,4 +121,14 @@ test('the backlift raises the bat: hands above the hips, bat tilted back, blade 
   }
   // the back-foot backlift is higher than the ready one
   assert.ok(pose(BACK).batToe[1] > pose(READY).batToe[1]);
+});
+
+test('backlift: grounded behind the toes while waiting, lifted high and back once the ball is coming', () => {
+  const g = targetPose(READY, c, true, false);
+  const l = targetPose(READY, c, true, true);
+  const gp = solvePose({ stance: g, alpha: 0, yaw: 0, rightHanded: true, baseZ: -8.84 }, body);
+  const lp = solvePose({ stance: l, alpha: 0, yaw: 0, rightHanded: true, baseZ: -8.84 }, body);
+  assert.ok(gp.batToe[1] < 0.15, 'grounded toe near the floor');
+  assert.ok(lp.batToe[1] > 0.7, 'lifted toe well above the knee');
+  assert.ok(lp.batToe[2] < lp.batTop[2] - 0.1 || Math.abs(lp.batToe[0] - lp.batTop[0]) > 0.1, 'lifted bat leans back/out');
 });

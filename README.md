@@ -10,6 +10,8 @@ Hard requirements:
 
 ## Status
 
+**v0.7.1, Backlift.** The bat now rests grounded behind the toes while waiting, then lifts high and back toward the slips as the ball is cued (tilt and direction are per-stance data), and comes down straight.
+
 **v0.7.0, Swipe to swing.** Pick a stance with the buttons, then swipe anywhere on the right of the screen
 as the ball arrives. The swipe's direction is the shot direction (up the screen is straight, left is the off
 side, right is the leg side for a right-hander; down is behind the wicket) and its speed is how hard: a slow

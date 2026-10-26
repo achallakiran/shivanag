@@ -19,6 +19,7 @@ export interface BatFrame {
 }
 
 const add = (a: Vec, b: Vec): Vec => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+const sub = (a: Vec, b: Vec): Vec => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const mul = (a: Vec, k: number): Vec => [a[0] * k, a[1] * k, a[2] * k];
 const dot = (a: Vec, b: Vec) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
 const cross = (a: Vec, b: Vec): Vec => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
@@ -29,23 +30,33 @@ const unit = (a: Vec): Vec => {
 
 // Bat pose for a given shoulder centre. `rest` is the hands' resting offset from the shoulders (backlift
 // hands); `armLen` is how far the hands reach along the rod when the arms are extended.
+// The bat's backlift is given as a tilt `theta` from vertical (0 = straight up, pi = straight down, so the bat
+// grounded at the toes is about 2.6) and an azimuth `sigma` for the direction of that tilt: 0 = straight back
+// toward the keeper, pi/2 = toward the off side (gully, second slip). The sideways part of the lean fades out by
+// contact, so the bat comes down straight whatever the backlift (the loop the pros show in their swing traces).
 // `eps` is the face tilt at contact (radians above vertical); `roll` turns the face about the rod (wrist roll),
-// letting the swing go one way and the face look another. With the defaults the bat is the plain pendulum.
-export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number, blBack = 0.39, blSide = 0, eps = blBack, roll = 0): BatFrame {
+// letting the swing go one way and the face look another.
+export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number, theta = 0.5, sigma = 0, eps?: number, roll = 0): BatFrame {
   const f = rightHanded ? -1 : 1; // X sign of "toward the off side"
   const fh: Vec = [f * Math.sin(yaw), 0, Math.cos(yaw)]; // horizontal, the direction of the shot
-  // Backlift direction: tilted back from vertical toward the keeper, and sideways toward the off side.
   const off = mul(cross([0, 1, 0], fh), f); // horizontal, toward the off side, across the shot direction
-  const a = unit(add(add([0, 1, 0], mul(fh, -Math.tan(blBack))), mul(off, Math.tan(blSide))));
+  const rawA = add([0, Math.cos(theta), 0], mul(fh, -Math.sin(theta) * Math.cos(sigma)));
+  const ns = Math.sqrt(dot(rawA, rawA));
+  const offc = Math.sin(theta) * Math.sin(sigma);
+  const a = ns > 1e-3 ? mul(rawA, 1 / ns) : ([0, 1, 0] as Vec); // backlift direction without the sideways lean
   const b = unit(add(fh, mul(a, -dot(a, fh)))); // forward, perpendicular to a within the plane
+  const gamma = Math.atan2(b[1], a[1]); // how far up the face looks at contact with no adjustment
   const ca = Math.cos(alpha);
   // The face tilt at contact is set by shifting the bat's angle a little around the bottom of the swing.
   const half = Math.sin(alpha / 2);
-  const ae = alpha + (eps - blBack) * half * half;
+  const ae = alpha + ((eps ?? gamma) - gamma) * half * half;
   const cb = Math.cos(ae);
   const sb = Math.sin(ae);
-  const d = unit(add(mul(a, cb), mul(b, -sb)));
-  let t = unit(add(mul(a, -sb), mul(b, -cb)));
+  const ds = unit(add(mul(a, cb), mul(b, -sb)));
+  const lean = mul(off, offc * (1 + ca) / 2);
+  const d = unit(add(mul(ds, ns), lean));
+  let t = add(mul(a, -sb), mul(b, -cb));
+  t = unit(sub(t, mul(d, dot(d, t))));
   let w = unit(cross(d, t));
   if (roll !== 0) {
     const cr = Math.cos(roll);
@@ -54,8 +65,7 @@ export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, r
     w = add(mul(t, -sr), mul(w, cr));
     t = t2;
   }
-  // Arms fold in the backlift and reach out along the rod as the swing comes through.
-  // At contact the hands are out in front, in the shot direction, a little below the shoulders.
+// At contact the hands are out in front, in the shot direction, a little below the shoulders.
   const e = 0.5 * (1 - ca);
   // The hands also lean a little toward the off side, in front of the front pad, whatever the shot direction.
   const out = add(add(mul(fh, armLen * 0.8), [0, -armLen * 0.55, 0]), [f * armLen * 0.35, 0, 0]);

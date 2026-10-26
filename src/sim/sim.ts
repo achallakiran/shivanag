@@ -3,8 +3,8 @@ import type { InputFrame } from '../input/types';
 import { InputReplayer, type Recording } from '../input/recorder';
 import { createBall, stepBall, type BallState } from './ball';
 import { createStance, stepStance, type StanceState } from './stance';
-import { createMachine, stepMachine, type MachineState } from './machine';
-import { createSwing, stepSwing, type SwingState } from './swing';
+import { createMachine, PHASE_WAIT, stepMachine, type MachineState } from './machine';
+import { createSwing, IDLE as PHASE_IDLE, stepSwing, type SwingState } from './swing';
 import { contactHook, createShot, updateShot, type ShotState } from './contact';
 import { batFor } from './skeleton';
 import { BAT_Z } from './field';
@@ -40,12 +40,12 @@ export function stepSim(s: SimState, f: InputFrame, dt: number, cfg: SimCfg): vo
   const rh = cfg.rightHanded;
   // Stance buttons choose the stance (locked while a swing is under way); a swipe launches a swing.
   stepSwing(s.swing, f, s.stance, dt, cfg.swing, rh);
-  stepStance(s.stance, f.sel, dt, cfg.stance, rh, s.swing.locked === 1);
+  stepStance(s.stance, f.sel, dt, cfg.stance, rh, s.swing.locked === 1, s.machine.phase !== PHASE_WAIT || s.swing.phase !== PHASE_IDLE);
   stepMachine(s.machine, s.ball, cfg.machine, cfg.ball, dt, rh);
 
   // bat at the start and end of this tick, then the ball moves with contact tested every sub-step
-  const f0 = batFor(s.stance.prev, s.swing.prevAlpha, s.swing.prevYaw, cfg.body, rh, BAT_Z, s.swing.eps || s.stance.prev.blBack, s.swing.roll);
-  const f1 = batFor(s.stance.pose, s.swing.alpha, s.swing.yaw, cfg.body, rh, BAT_Z, s.swing.eps || s.stance.pose.blBack, s.swing.roll);
+  const f0 = batFor(s.stance.prev, s.swing.prevAlpha, s.swing.prevYaw, cfg.body, rh, BAT_Z, s.swing.eps || undefined, s.swing.roll);
+  const f1 = batFor(s.stance.pose, s.swing.alpha, s.swing.yaw, cfg.body, rh, BAT_Z, s.swing.eps || undefined, s.swing.roll);
   const hook = contactHook({ f0, f1, dt, bat: cfg.bat, radius: cfg.ball.radius, rightHanded: rh, alpha: s.swing.alpha, shot: s.shot });
   stepBall(s.ball, cfg.ball, dt, hook);
   updateShot(s.shot, s.ball, s.machine.count, s.swing.alpha);

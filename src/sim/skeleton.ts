@@ -167,7 +167,7 @@ export function torso(st: StancePose, body: GameConfig['body'], rh: boolean, bas
 }
 
 // The bat for a stance, bat angle and swing plane. The sim and the renderer both use this.
-export function batFor(st: StancePose, alpha: number, yaw: number, body: GameConfig['body'], rh: boolean, baseZ: number, eps = st.blBack, roll = 0): BatFrame {
+export function batFor(st: StancePose, alpha: number, yaw: number, body: GameConfig['body'], rh: boolean, baseZ: number, eps?: number, roll = 0): BatFrame {
   const T = torso(st, body, rh, baseZ);
   return batFrame(T.mid, T.restHands, alpha, yaw, rh, T.armLen, st.blBack, st.blSide, eps, roll);
 }
@@ -181,7 +181,7 @@ export function solvePose(inp: PoseInput, body: GameConfig['body']): Pose {
   const legL = twoBone(T.hipL, T.ankleL, D.thigh, D.shin, add(legPole, L(0, 0, wL * 0.3)));
   const legR = twoBone(T.hipR, T.ankleR, D.thigh, D.shin, add(legPole, L(0, 0, -wL * 0.3)));
 
-  const fr = batFrame(T.mid, T.restHands, inp.alpha, inp.yaw, inp.rightHanded, T.armLen, inp.stance.blBack, inp.stance.blSide, inp.eps ?? inp.stance.blBack, inp.roll ?? 0);
+  const fr = batFrame(T.mid, T.restHands, inp.alpha, inp.yaw, inp.rightHanded, T.armLen, inp.stance.blBack, inp.stance.blSide, inp.eps, inp.roll ?? 0);
   const toe = add(fr.top, mul(fr.d, BAT_TOTAL));
   // Bottom hand at the grip, top hand a hand-width higher up the handle. Right-hander: left hand on top.
   const topHand = add(fr.hands, mul(fr.d, -0.12));

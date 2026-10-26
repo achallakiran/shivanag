@@ -11,7 +11,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { createWorld } from '../src/render/world';
 import { CAMERAS } from '../src/render/cameras';
 import { createSimState, makeSimCfg, stepSim } from '../src/sim/sim';
-import { STANCE_NAMES, clonePose, targetPose } from '../src/sim/stance';
+import { READY, STANCE_NAMES, clonePose, targetPose } from '../src/sim/stance';
 import { DEFAULT_CONFIG } from '../src/config/defaults';
 
 const W = Number(process.env.PW ?? 956); // iPhone Pro Max landscape
@@ -179,6 +179,19 @@ for (let g = 0; g < STANCE_NAMES.length; g++) {
     const shot = render(world, engine);
     writeFileSync(`${outDir}/stance-${g}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
     if (cam === 0) summary.push(`stance ${g} ${STANCE_NAMES[g]}: batter is ${(shot.headFrac * 100).toFixed(0)}% of the screen height`);
+  }
+}
+
+// Ready, bat grounded (waiting) versus lifted, from the three cameras.
+for (const lifted of [false, true]) {
+  const st = createSimState();
+  st.stance.pose = targetPose(READY, DEFAULT_CONFIG.stance, true, lifted);
+  st.stance.prev = clonePose(st.stance.pose);
+  for (const cam of [0, 6, 4]) {
+    world.setView({ camera: cam, rightHanded: true, skeleton: false });
+    world.update(st, 1);
+    const shot = render(world, engine);
+    writeFileSync(`${outDir}/ready-${lifted ? 'lifted' : 'grounded'}-${CAMERAS[cam]!.id}.png`, png(shot.rgb, W, H));
   }
 }
 
