@@ -109,6 +109,9 @@ function buildLevel() {
   // ---- vegetation ----
   const tree = (x, z, h) => {
     w.box(x, 2, z, x, 1 + h, z, M.TRUNK);
+    // a branch off the trunk top toward the courtyard centre: the snake can perch here and wait
+    const tx = 16 - x, tz = 14 - z, bx = Math.abs(tx) >= Math.abs(tz) ? Math.sign(tx) : 0, bz = bx ? 0 : Math.sign(tz);
+    for (let k = 1; k <= (h >= 3 ? 3 : 2); k++) if (w.get(x + bx * k, 1 + h, z + bz * k) === 0) w.set(x + bx * k, 1 + h, z + bz * k, M.BRANCH);
     const cy = 2 + h;
     for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let dy = -1; dy <= 2; dy++) {
       const r2 = dx * dx + dz * dz + dy * dy * 1.6;

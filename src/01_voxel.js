@@ -2,7 +2,7 @@
 const M = {
   AIR: 0, SAND: 1, SAND2: 2, BASE: 3, WALL: 4, CAP: 5, PILLAR: 6, STEP: 7, DARK: 8,
   GRASS: 9, GRASS2: 10, WOOD: 11, LEAF: 12, LEAF2: 13, TRUNK: 14, ROCK: 15, ROCK2: 16,
-  WATER: 17, BARS: 18, RUG: 19, FLOWER1: 20, FLOWER2: 21, BEAM: 22, RUBBLE: 23, PATH: 24, WALLX: 25, CAPX: 26, POLE: 27
+  WATER: 17, BARS: 18, RUG: 19, FLOWER1: 20, FLOWER2: 21, BEAM: 22, RUBBLE: 23, PATH: 24, WALLX: 25, CAPX: 26, POLE: 27, BRANCH: 28
 };
 const MD = [];
 function defMat(id, color, jitter, walk) { MD[id] = { c: hex(color), j: jitter, walk: !!walk }; }
@@ -14,7 +14,7 @@ defMat(M.LEAF, 0x5f9a3b, .09); defMat(M.LEAF2, 0x7db048, .09); defMat(M.TRUNK, 0
 defMat(M.ROCK, 0x8d7260, .07); defMat(M.ROCK2, 0x75604f, .07); defMat(M.WATER, 0x3f93b8, 0);
 defMat(M.BARS, 0x34333a, .03); defMat(M.RUG, 0xb4483a, .04, 1);
 defMat(M.FLOWER1, 0xe8809f, .05, 1); defMat(M.FLOWER2, 0xf0d25a, .05, 1);
-defMat(M.BEAM, 0xc89a6c, .05, 1); defMat(M.WALLX, 0xcaa070, .07); defMat(M.CAPX, 0xdbb888, .05); defMat(M.RUBBLE, 0xb99a76, .1); defMat(M.PATH, 0xc3a273, .05, 1); defMat(M.POLE, 0xa8774a, .05, 1);
+defMat(M.BEAM, 0xc89a6c, .05, 1); defMat(M.WALLX, 0xcaa070, .07); defMat(M.CAPX, 0xdbb888, .05); defMat(M.RUBBLE, 0xb99a76, .1); defMat(M.PATH, 0xc3a273, .05, 1); defMat(M.POLE, 0xa8774a, .05, 1); defMat(M.BRANCH, 0x8a5f38, .06, 1);
 
 class VoxelWorld {
   constructor(sx, sz, ymin, ymax) {
