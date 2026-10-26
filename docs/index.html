@@ -306,7 +306,7 @@ const LV = { W: 32, D: 30 };
 // tall trees with a limb toward (cx, cz), bushes and rocks
 function vegetation(w, cx, cz) {
   const tree = (x, z, h0) => {
-    const H = h0 + 4; // tall trunk: tree tops are well above the courtyard
+    const H = h0 + 8; // very tall trunk: tree tops are well above the courtyard
     w.box(x, 2, z, x, 1 + H, z, M.TRUNK);
     // a limb off the trunk toward the courtyard centre, three voxels below the trunk top: the snake climbs the trunk on that side
     // and mounts the limb from below; a clear gap separates it from the leaf crown above
@@ -331,7 +331,7 @@ function vegetation(w, cx, cz) {
 
 function buildCourtyard() {
   const W = LV.W, D = LV.D;
-  const w = new VoxelWorld(W, D, -8, 14);
+  const w = new VoxelWorld(W, D, -8, 22);
   const rnd = mulberry32(11);
 
   // ---- floating island underside ----
@@ -458,10 +458,10 @@ function buildCourtyard() {
 
 
 /* the full island: the hand-designed courtyard sits in the middle of a larger grassy island with outer lawns, trees and a patrol lane */
-const OX = 10, OZ = 8;
+const OX = 20, OZ = 16;
 function buildLevel() {
   const I = buildCourtyard(), W = I.W + 2 * OX, D = I.D + 2 * OZ;
-  const w = new VoxelWorld(W, D, -8, 16);
+  const w = new VoxelWorld(W, D, -8, 22);
   // underside, base slab, outer floor
   for (let k = 1; k <= 8; k++) for (let z = 0; z < D; z++) for (let x = 0; x < W; x++) {
     const edge = Math.min(x, W - 1 - x, z, D - 1 - z), inset = k * 1.8 + hash3(x, k, z) * 1.7;
@@ -477,7 +477,7 @@ function buildLevel() {
   // outer patrol lane (sand) along the south lawn
   for (let x = 8; x < W - 8; x++) for (let z = D - OZ + 2; z <= D - OZ + 3; z++) w.set(x, 1, z, ((x + z) & 1) ? M.SAND : M.SAND2);
   // drop the courtyard in
-  for (let z = 0; z < I.D; z++) for (let y = 1; y <= 14; y++) for (let x = 0; x < I.W; x++) w.set(x + OX, y, z + OZ, I.world.get(x, y, z));
+  for (let z = 0; z < I.D; z++) for (let y = 1; y <= 22; y++) for (let x = 0; x < I.W; x++) w.set(x + OX, y, z + OZ, I.world.get(x, y, z));
   // outer scenery (world coordinates; limbs point to the island centre)
   const inside = (x, z, m) => x >= OX - m && x < OX + I.W + m && z >= OZ - m && z < OZ + I.D + m;
   const veg = vegetation(w, W / 2, D / 2);
