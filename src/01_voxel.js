@@ -41,7 +41,8 @@ class VoxelWorld {
     const tries = [0, 1, -1];
     for (const dy of tries) {
       const top = from + dy;
-      if (this.walk(x, top - 1, z) && this.get(x, top, z) === 0) return top;
+      const a = this.get(x, top, z);
+      if (this.walk(x, top - 1, z) && (a === 0 || a === M.LEAF || a === M.LEAF2)) return top;
     }
     return null;
   }

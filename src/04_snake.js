@@ -1,10 +1,13 @@
 /* Shivanag — the naga: head + 3 voxel body blocks + 3 shrinking round tail beads; grid movement, climbing */
-const CLIMB = new Set([M.PILLAR, M.WALL, M.BASE, M.CAP, M.TRUNK]);
+// every solid surface is climbable except water, bars, leaves (soft) and the maze/cell walls
+const CLIMB = new Set();
+for (let m = 1; m < MD.length; m++) if (MD[m] && m !== M.WATER && m !== M.BARS && m !== M.WALLX && m !== M.CAPX && m !== M.LEAF && m !== M.LEAF2) CLIMB.add(m);
 const SEGS = [
   { k: 'c', s: .70, d: .62 }, { k: 'c', s: .68, d: 1.22 }, { k: 'c', s: .66, d: 1.82 },
   { k: 'c', s: .64, d: 2.40 }, { k: 'c', s: .60, d: 2.96 },
   { k: 's', s: .50, d: 3.46 }, { k: 's', s: .38, d: 3.86 }, { k: 's', s: .26, d: 4.16 },
 ];
+const soft = (m) => m === 0 || m === M.LEAF || m === M.LEAF2;
 class Snake {
   constructor(scene, world, spawnCells, top, bevel) {
     this.scene = scene; this.world = world; this.bevel = bevel || null;
@@ -102,7 +105,7 @@ class Snake {
       return this._go(this._cp(c.x, c.z, top, dx, dz), { x: c.x, z: c.z, top }, .18);
     }
     // ledge: lean over the edge and climb down, if we are standing on a climbable block
-    if (w.get(nx, top, nz) === 0 && w.get(nx, top - 1, nz) === 0 && CLIMB.has(w.get(c.x, top - 1, c.z))) {
+    if (soft(w.get(nx, top, nz)) && soft(w.get(nx, top - 1, nz)) && CLIMB.has(w.get(c.x, top - 1, c.z))) {
       this.climb = { fx: -dx, fz: -dz };
       return this._go(this._cp(nx, nz, top - 1, -dx, -dz), { x: nx, z: nz, top: top - 1 }, .26);
     }
@@ -114,9 +117,9 @@ class Snake {
     const dot = dx * fx + dz * fz, D = .26;
     if (dot > 0) { // up the wall
       const above = w.get(x, h + 1, z);
-      if (above === 0) {
+      if (soft(above)) {
         if (CLIMB.has(w.get(x + fx, h + 1, z + fz))) return this._go(this._cp(x, z, h + 1, fx, fz), { x, z, top: h + 1 }, D);
-        if (w.walk(x + fx, h, z + fz) && w.get(x + fx, h + 1, z + fz) === 0) { // over the top onto the ledge
+        if (CLIMB.has(w.get(x + fx, h, z + fz)) && soft(w.get(x + fx, h + 1, z + fz))) { // over the top onto the ledge
           this.climb = null; this.targetHeading = Math.atan2(fx, fz);
           return this._go(this._gp(x + fx, z + fz, h + 1), { x: x + fx, z: z + fz, top: h + 1 }, .3);
         }
@@ -130,14 +133,24 @@ class Snake {
     }
     if (dot < 0) { // down
       if (w.walk(x, h - 1, z)) { this.climb = null; return this._go(this._gp(x, z, h), { x, z, top: h }, .22); }
-      if (w.get(x, h - 1, z) === 0 && CLIMB.has(w.get(x + fx, h - 1, z + fz))) return this._go(this._cp(x, z, h - 1, fx, fz), { x, z, top: h - 1 }, D);
+      if (soft(w.get(x, h - 1, z)) && CLIMB.has(w.get(x + fx, h - 1, z + fz))) return this._go(this._cp(x, z, h - 1, fx, fz), { x, z, top: h - 1 }, D);
       // tuck under an overhang (e.g. a capital) onto the narrower shaft below
       if (w.get(x + fx, h - 1, z + fz) === 0 && CLIMB.has(w.get(x + 2 * fx, h - 1, z + 2 * fz))) return this._go(this._cp(x + fx, z + fz, h - 1, fx, fz), { x: x + fx, z: z + fz, top: h - 1 }, D);
       return false;
     }
     // sideways along the wall
-    const nx = x + dx, nz = z + dz;
-    if (w.get(nx, h, nz) === 0 && CLIMB.has(w.get(nx + fx, h, nz + fz))) return this._go(this._cp(nx, nz, h, fx, fz), { x: nx, z: nz, top: h }, D);
+    const nx = x + dx, nz = z + dz, nm = w.get(nx, h, nz);
+    if (CLIMB.has(nm)) { // inside corner: turn onto the new wall
+      this.climb = { fx: dx, fz: dz };
+      return this._go(this._cp(x, z, h, dx, dz), { x, z, top: h }, D);
+    }
+    if (!soft(nm)) return false;
+    if (CLIMB.has(w.get(nx + fx, h, nz + fz))) return this._go(this._cp(nx, nz, h, fx, fz), { x: nx, z: nz, top: h }, D);
+    // outside corner: wrap around onto the side face
+    if (CLIMB.has(w.get(x + fx, h, z + fz)) && soft(w.get(nx + fx, h, nz + fz))) {
+      this.climb = { fx: -dx, fz: -dz };
+      return this._go(this._cp(nx + fx, nz + fz, h, -dx, -dz), { x: nx + fx, z: nz + fz, top: h }, .3);
+    }
     return false;
   }
 
