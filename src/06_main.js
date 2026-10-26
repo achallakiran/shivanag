@@ -175,9 +175,13 @@
   hud.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:6;overflow:hidden';
   hud.innerHTML = '<div id="hearts" style="position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;font-size:30px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.5)"></div>' +
     '<div id="flash" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,0) 40%,rgba(255,80,60,.55));opacity:0;transition:opacity .35s"></div>' +
+    '<div id="slowfx" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(120,180,255,0) 35%,rgba(90,150,255,.45));opacity:0;transition:opacity .3s"></div>' +
+    '<div id="combat" style="position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:14px;pointer-events:none">' +
+    '<button id="btnA" style="pointer-events:auto;touch-action:none;width:88px;height:88px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:#c8452b;color:#fff;font:800 15px system-ui;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.4);opacity:.45;transition:opacity .15s,transform .1s">BITE</button>' +
+    '<div id="escWrap" style="position:relative;width:80px;height:80px;border-radius:50%;padding:5px;background:conic-gradient(#7fd0ff 0deg,rgba(255,255,255,.2) 0deg)"><button id="btnE" style="pointer-events:auto;touch-action:none;width:100%;height:100%;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:#2c5fa8;color:#fff;font:800 13px system-ui;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.4)">ESCAPE</button></div></div>' +
     '<div id="banner" style="position:absolute;left:0;right:0;top:34%;text-align:center;font:800 clamp(26px,7vw,48px) system-ui;letter-spacing:.08em;color:#fff;text-shadow:0 3px 14px rgba(0,0,0,.6);opacity:0;transition:opacity .4s"></div>';
   document.body.appendChild(hud);
-  const heartsEl = hud.querySelector('#hearts'), flashEl = hud.querySelector('#flash'), bannerEl = hud.querySelector('#banner');
+  const slowEl = hud.querySelector('#slowfx'), btnA = hud.querySelector('#btnA'), btnE = hud.querySelector('#btnE'), escWrap = hud.querySelector('#escWrap'), heartsEl = hud.querySelector('#hearts'), flashEl = hud.querySelector('#flash'), bannerEl = hud.querySelector('#banner');
   function drawHearts(n, shake) {
     heartsEl.innerHTML = [0, 1, 2].map(i => `<span style="color:${i < n ? '#f4c542' : 'rgba(255,255,255,.25)'};${shake && i === n ? 'transform:scale(1.4)' : ''}">&#9829;</span>`).join('');
   }
@@ -186,23 +190,37 @@
   let bannerT = 0, hitBlink = 0, restartT = 0;
   const proj = (x, y, z) => { const v = B.Vector3.Project(new B.Vector3(x, y, z), B.Matrix.Identity(), scene.getTransformMatrix(), rig.cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())); return [v.x / engine.getRenderWidth() * innerWidth, v.y / engine.getRenderHeight() * innerHeight, v.z]; };
   function showBanner(t, sec) { bannerEl.textContent = t; bannerEl.style.opacity = 1; bannerT = sec; }
-  function resetStage() { snake.reset(level.spawnCells, level.spawnTop); guards.reset(); drawHearts(3); showBanner('TRY AGAIN', 1.6); }
+  const press = (el, fn) => { el.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); fn(); el.style.transform = 'scale(.92)'; }); const up = () => el.style.transform = ''; el.addEventListener('pointerup', up); el.addEventListener('pointerleave', up); };
+  const doAttack = () => { if (restartT <= 0) guards.attack(snake); };
+  const doEscape = () => { if (restartT <= 0) { const r = guards.escape(snake); if (r === 'slow') showBanner('SLOW MOTION', .9); } };
+  press(btnA, doAttack); press(btnE, doEscape);
+  addEventListener('keydown', (e) => { if (e.repeat) return; if (e.code === 'Space') { e.preventDefault(); doAttack(); } else if (e.key === 'x' || e.key === 'X') doEscape(); });
+  function resetStage() { snake.speedMul = 1; snake.reset(level.spawnCells, level.spawnTop); guards.reset(); drawHearts(3); showBanner('TRY AGAIN', 1.6); }
   function hudUpdate(dt) {
     for (const e of guards.events.splice(0)) {
       if (e.t === 'hit') { drawHearts(e.hearts, true); flashEl.style.opacity = 1; setTimeout(() => flashEl.style.opacity = 0, 160); hitBlink = 1.2; }
       if (e.t === 'lost') { showBanner('LOST A LIFE', 2.2); restartT = 2.2; }
       if (e.t === 'shout') showBanner('GUARDS ALERTED!', .9);
+      if (e.t === 'counter') showBanner('COUNTER!', .9);
+      if (e.t === 'dodge') showBanner('DODGED!', .7);
+      if (e.t === 'bite') showBanner('ASLEEP', .7);
     }
     if (restartT > 0) { restartT -= dt; if (restartT <= 0) resetStage(); }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.style.opacity = 0; }
     if (hitBlink > 0) { hitBlink -= dt; const vis = Math.floor(hitBlink * 12) % 2 === 0 || hitBlink <= 0; for (const m of snake.meshes) m.isVisible = vis; if (hitBlink <= 0) for (const m of snake.meshes) m.isVisible = true; }
+    slowEl.style.opacity = guards.slow > 0 ? 1 : 0;
+    btnA.style.opacity = guards.bite ? 1 : .45; btnA.style.boxShadow = guards.bite ? '0 0 22px 6px rgba(255,200,80,.8)' : '0 4px 14px rgba(0,0,0,.4)';
+    { const full = guards.meter >= 1, deg = (guards.slow > 0 ? guards.slow / 3 : guards.meter) * 360;
+      escWrap.style.background = `conic-gradient(${full || guards.slow > 0 ? '#ffe27a' : '#7fd0ff'} ${deg}deg, rgba(255,255,255,.2) ${deg}deg)`;
+      btnE.style.background = guards.window ? '#e23b3b' : '#2c5fa8'; btnE.style.boxShadow = guards.window ? '0 0 26px 8px rgba(255,80,60,.9)' : full ? '0 0 20px 5px rgba(255,226,122,.8)' : '0 4px 14px rgba(0,0,0,.4)';
+      btnE.style.opacity = guards.escCd > 0 && !guards.window ? .6 : 1; }
     guards.list.forEach((g, i) => {
-      const b = badges[i], show = g.aw > .03 || g.state === 'alert' || g.state === 'search';
+      const b = badges[i], show = g.state === 'asleep' || g.aw > .03 || g.state === 'alert' || g.state === 'search';
       if (!show) { b.style.display = 'none'; return; }
       const p = proj(g.pos.x, g.pos.y + 3.9, g.pos.z); if (p[2] > 1 || p[2] < 0) { b.style.display = 'none'; return; }
       b.style.display = 'block'; b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
-      b.querySelector('.ic').innerHTML = g.state === 'alert' ? '<span style="color:#ff4b3a">!</span>' : g.state === 'search' || g.state === 'susp' ? '<span style="color:#ffc83d">?</span>' : '';
-      const mt = b.querySelector('.mt'); mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
+      b.querySelector('.ic').innerHTML = g.state === 'asleep' ? '<span style="font-size:20px;color:#cfe8ff">Zzz</span>' : g.state === 'alert' ? '<span style="color:#ff4b3a">!</span>' : g.state === 'search' || g.state === 'susp' ? '<span style="color:#ffc83d">?</span>' : '';
+      const mt = b.querySelector('.mt'); b.lastChild.style.display = g.state === 'asleep' ? 'none' : 'block'; mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
     });
   }
 
@@ -216,7 +234,8 @@
     snake.update(dt, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);
     props.update(time);
-    if (restartT <= 0) guards.update(dt, time, snake); hudUpdate(dt);
+    const ts = guards.tick(dt, snake);
+    if (restartT <= 0) guards.update(dt * ts, time, snake); hudUpdate(dt);
     { const h = snake.head, q = snake.seg[2].position; if (occ.p) { occ.p.a.set(h.x, h.y + .4, h.z, 1.35); occ.p.b.set(q.x, q.y, q.z, 1.35); } }
     scene.render();
     if (++frames % 20 === 0) $('fps').textContent = engine.getFps().toFixed(0) + ' fps';

@@ -14,7 +14,7 @@ class Snake {
     this.path = spawnCells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
     this.cell = { x: spawnCells[0].x, z: spawnCells[0].z, top };
     this.climb = null; this.climbF = 0; this.pitch = 0;
-    this.t = 1; this.dur = 0.2; this.wish = null;
+    this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
     this.mv = 0; this.idle = 0; this.lift = 0; this.phase = 0; this.hood = 1;
@@ -109,7 +109,7 @@ class Snake {
   _cp(x, z, h, fx, fz) { return { x: x + .5 + fx * .2, y: h + .2, z: z + .5 + fz * .2 }; }
   _go(pt, cell, dur) {
     this.path.unshift(pt); if (this.path.length > 48) this.path.length = 48;
-    this.cell = cell; this.t = 0; this.dur = dur / 1.25; return true;
+    this.cell = cell; this.t = 0; this.dur = dur / 1.25 / (this.speedMul || 1); return true;
   }
 
   tryStep(dir) { return this.climb ? this._stepClimb(dir[0], dir[1]) : this._stepGround(dir[0], dir[1]); }
