@@ -1,264 +1,117 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
-import { Store } from './core/storage';
-import { FixedLoop } from './core/loop';
-import {
-  exportSettings,
-  importSettings,
-  loadConfig,
-  mergeConfig,
-  patchFromPath,
-  resetConfig,
-  saveConfig,
-} from './config/config';
-import { InputRecorder } from './input/recorder';
-import { SwipeInput } from './input/swipe';
-import { createSimState, hashSim, makeSimCfg, replayRecording, stepSim, type SimCfg } from './sim/sim';
-import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
-import { Sound } from './ui/sound';
-import { STANCE_NAMES, READY } from './sim/stance';
-import { shotText } from './ui/shotText';
-import { createWorld } from './render/world';
-import { Overlay } from './ui/overlay';
-import { downloadText } from './ui/download';
-import { registerServiceWorker, type PwaHandle } from './pwa/register';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
+import { createStage, frame } from './voxel/stage';
+import { createBatsman, type PoseData } from './voxel/rig';
+import { lerpPose, READY_GROUNDED, STANCES } from './voxel/poses';
+import { registerServiceWorker } from './pwa/register';
 
-function blockGestures(canvas: HTMLElement): void {
-  // iOS Safari pinch/zoom gesture events, double-tap zoom, long-press menu.
-  for (const t of ['gesturestart', 'gesturechange', 'gestureend']) {
-    document.addEventListener(t, (e) => e.preventDefault(), { passive: false });
-  }
-  document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
-  document.addEventListener('contextmenu', (e) => e.preventDefault());
-  document.addEventListener(
-    'touchmove',
-    (e) => {
-      if (e.target === canvas) e.preventDefault();
-    },
-    { passive: false },
-  );
-}
+// Phase 1 viewer: the voxel batsman in each stance. Tap a stance to blend into it; drag to look around.
+const CAMERAS = [
+  { name: 'Bowler end', pos: [0.1, 1.7, 9] as [number, number, number], fill: 0.8 },
+  { name: 'Side', pos: [-6, 1.2, 0] as [number, number, number], fill: 0.8 },
+  { name: 'Behind', pos: [0, 1.6, -6] as [number, number, number], fill: 0.8 },
+  { name: 'Three-quarter', pos: [-3.5, 1.5, 4.5] as [number, number, number], fill: 0.8 },
+];
 
-// Audit of everything the page has loaded from any other site. The game must
-// work offline, so this should always read "none".
-function externalRequests(): string {
-  try {
-    const hosts = new Set<string>();
-    for (const e of performance.getEntriesByType('resource')) {
-      const u = new URL(e.name, location.href);
-      if (u.origin !== location.origin && (u.protocol === 'http:' || u.protocol === 'https:')) hosts.add(u.host);
-    }
-    return hosts.size === 0 ? 'none' : `${hosts.size} (${[...hosts].join(', ')})`;
-  } catch {
-    return 'unknown';
-  }
-}
-
-async function main(): Promise<void> {
+function main(): void {
   const app = window.__APP__ ?? { version: 'dev', build: 'dev' };
-  const store = new Store();
-  let cfg = loadConfig(store);
-
   const canvas = document.getElementById('game') as HTMLCanvasElement;
   const ui = document.getElementById('ui') as HTMLElement;
-  blockGestures(canvas);
+  const engine = new Engine(canvas, true, { stencil: false, alpha: false, powerPreference: 'high-performance' }, false);
+  engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, 2));
+  window.addEventListener('resize', () => engine.resize());
+  const stage = createStage(engine);
+  const man = createBatsman(stage.scene, stage.voxelMat);
 
-  const engine = new Engine(canvas, true, { stencil: false, alpha: false, powerPreference: 'high-performance', preserveDrawingBuffer: false }, false);
-  const applyScale = () => engine.setHardwareScalingLevel(1 / Math.min(window.devicePixelRatio || 1, cfg.render.maxPixelRatio));
-  applyScale();
-  const resize = () => {
-    applyScale();
-    engine.resize();
+  let from: PoseData = READY_GROUNDED;
+  let to: PoseData = STANCES[0]!.pose;
+  let t = 1;
+  let grounded = false; // Ready with the bat on the ground
+  let selected = 0;
+  let camIx = 0;
+  let orbit = 0; // radians around the batsman, from dragging
+  let lift = 0;
+  const target: [number, number, number] = [0, 0.85, 0];
+  const place = () => {
+    const c = CAMERAS[camIx]!;
+    const base = new Vector3(c.pos[0] - target[0], 0, c.pos[2] - target[2]);
+    const r = Math.hypot(base.x, base.z);
+    const a = Math.atan2(base.x, base.z) + orbit;
+    frame(stage.cam, [target[0] + Math.sin(a) * r, c.pos[1] + lift, target[2] + Math.cos(a) * r], target, c.fill);
   };
-  window.addEventListener('resize', resize);
-  window.addEventListener('orientationchange', resize);
 
-  const world = createWorld(engine, cfg);
-  // View options (camera, skeleton overlay, handedness) are remembered between sessions.
-  const saveView = () => store.set('view', JSON.stringify(world.view()));
-  try {
-    const v = JSON.parse(store.get('view') ?? '{}') as Record<string, unknown>;
-    world.setView({
-      camera: typeof v.camera === 'number' ? v.camera : 0,
-      skeleton: typeof v.skeleton === 'boolean' ? v.skeleton : true,
-      rightHanded: typeof v.rightHanded === 'boolean' ? v.rightHanded : true,
-      guide: typeof v.guide === 'boolean' ? v.guide : false,
-      size: typeof v.size === 'number' ? v.size : 1,
+  const row = document.createElement('div');
+  row.style.cssText = 'position:fixed;left:8px;top:8px;display:flex;flex-direction:column;gap:6px;z-index:5';
+  const style = (b: HTMLElement, on: boolean) => {
+    b.style.cssText = `font:600 14px system-ui;padding:9px 12px;border-radius:10px;border:1px solid #fff6;color:#fff;background:${on ? '#2e7d32' : '#0008'};text-align:left;min-width:128px`;
+  };
+  const buttons: HTMLButtonElement[] = [];
+  const choose = (i: number) => {
+    if (i === selected && i === 0) grounded = !grounded;
+    selected = i;
+    from = lastPose;
+    to = i === 0 && grounded ? READY_GROUNDED : STANCES[i]!.pose;
+    t = 0;
+    buttons.forEach((b, k) => {
+      style(b, k === i);
+      b.textContent = k === 0 ? (grounded && i === 0 ? 'Ready (bat down)' : 'Ready (bat up)') : STANCES[k]!.name;
     });
-  } catch {
-    /* bad saved value: keep defaults */
-  }
-  const simCfg: SimCfg = makeSimCfg(cfg, world.view().rightHanded);
-  const sound = new Sound();
-  const unlock = () => sound.unlock();
-  window.addEventListener('pointerdown', unlock, { passive: true });
-  const swipe = new SwipeInput(canvas, () => cfg.input);
-  let selected = READY; // the stance button chosen; tapping the chosen one again returns to Ready
-  const recorder = new InputRecorder(cfg.sim.stepHz);
-  const sim = createSimState(cfg.stance, simCfg.rightHanded);
-
-  let persisted = 'unknown';
-  try {
-    const p = await navigator.storage?.persist?.();
-    persisted = p === undefined ? 'unsupported' : p ? 'granted' : 'not granted';
-  } catch {
-    persisted = 'unsupported';
-  }
-
-  let pwa: PwaHandle | null = null;
-  const reload = () => setTimeout(() => location.reload(), 200);
-
-  const overlay: Overlay = new Overlay(ui, app, {
-    async checkUpdate() {
-      if (!pwa) return 'Offline install is not active (needs https).';
-      await pwa.check();
-      return 'Checked. If a newer build exists, an update banner appears.';
-    },
-    verifyReplay() {
-      if (recorder.truncated) return 'Input log hit its size cap, so replay cannot be verified.';
-      const ticks = loop.tick;
-      const live = hashSim(sim);
-      const replayed = hashSim(replayRecording(recorder.toRecording(), simCfg, ticks));
-      return replayed === live
-        ? `Replay matches: ${ticks} steps, state ${live}`
-        : `MISMATCH after ${ticks} steps: live ${live}, replay ${replayed}`;
-    },
-    exportLog() {
-      const rec = recorder.toRecording();
-      downloadText(`voxel-cricket-input-${app.version}-${rec.ticks}.json`, JSON.stringify({ app, config: cfg, recording: rec }));
-      return `Exported ${rec.frames.length} input changes over ${rec.ticks} steps.`;
-    },
-    exportSettings() {
-      downloadText(`voxel-cricket-settings-${app.version}.json`, exportSettings(cfg));
-      return 'Settings exported.';
-    },
-    importSettings(text) {
-      try {
-        cfg = importSettings(text);
-        saveConfig(store, cfg);
-        reload();
-        return 'Settings imported. Reloading...';
-      } catch (e) {
-        return `Import failed: ${e instanceof Error ? e.message : String(e)}`;
-      }
-    },
-    resetSettings() {
-      resetConfig(store);
-      reload();
-      return 'Settings reset. Reloading...';
-    },
-    toggleHud() {
-      cfg = mergeConfig(cfg, patchFromPath('debug.hud', !cfg.debug.hud));
-      saveConfig(store, cfg);
-      return cfg.debug.hud ? 'HUD on.' : 'HUD off.';
-    },
-    cycleCamera() {
-      world.setView({ camera: world.view().camera + 1 });
-      saveView();
-      return `Camera: ${world.cameraLabel()}`;
-    },
-    toggleGuide() {
-      const on = !world.view().guide;
-      world.setView({ guide: on });
-      saveView();
-      return on ? 'Aim guide shown' : 'Aim guide hidden';
-    },
-    playerSize(dir) {
-      const size = Math.round((world.view().size + dir * 0.1) * 10) / 10;
-      world.setView({ size });
-      saveView();
-      return `Player size ${(world.view().size * 100).toFixed(0)}%`;
-    },
-    toggleSkeleton() {
-      const on = !world.view().skeleton;
-      world.setView({ skeleton: on });
-      saveView();
-      return on ? 'Skeleton shown' : 'Skeleton hidden';
-    },
-    toggleHanded() {
-      // The machine's line depends on handedness, so a change restarts the session cleanly.
-      const rh = !world.view().rightHanded;
-      world.setView({ rightHanded: rh });
-      saveView();
-      reload();
-      return rh ? 'Right-handed. Reloading...' : 'Left-handed. Reloading...';
-    },
-    setSetting(path, value) {
-      cfg = mergeConfig(cfg, patchFromPath(path, value));
-      saveConfig(store, cfg);
-      reload();
-      return `${path} set. Reloading...`;
-    },
-    status() {
-      const sw = pwa ? pwa.state() : 'not started';
-      return {
-        offline: sw === 'offline-ready' ? 'ready (works with no network)' : sw,
-        storage: store.persistent ? 'saved on this device' : 'memory only (will not persist)',
-        persisted,
-        external: externalRequests(),
-      };
-    },
-  }, () => cfg);
-
-  overlay.buildStanceButtons(STANCE_NAMES, (i) => {
-    selected = selected === i ? READY : i;
-    sound.unlock();
+  };
+  STANCES.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.textContent = s.name;
+    b.onclick = () => choose(i);
+    buttons.push(b);
+    row.appendChild(b);
   });
+  const cam = document.createElement('button');
+  style(cam, false);
+  cam.textContent = `Camera: ${CAMERAS[0]!.name}`;
+  cam.onclick = () => {
+    camIx = (camIx + 1) % CAMERAS.length;
+    orbit = 0;
+    cam.textContent = `Camera: ${CAMERAS[camIx]!.name}`;
+  };
+  row.appendChild(cam);
+  ui.appendChild(row);
+  const ver = document.createElement('div');
+  ver.style.cssText = 'position:fixed;right:8px;bottom:6px;color:#fff9;font:11px ui-monospace,monospace';
+  ver.textContent = `v${app.version} (${app.build}) - pose viewer`;
+  ui.appendChild(ver);
 
-  if (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
-    pwa = registerServiceWorker({ onUpdateReady: (apply) => overlay.showUpdate(apply) });
-  }
+  let drag: { x: number; y: number } | null = null;
+  canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    orbit -= (e.clientX - drag.x) * 0.008;
+    lift = Math.max(-0.8, Math.min(2, lift - (e.clientY - drag.y) * 0.01));
+    drag = { x: e.clientX, y: e.clientY };
+  });
+  canvas.addEventListener('pointerup', () => { drag = null; });
 
-  let hudAt = 0;
-  let lastPhase = -1;
-  let lastBounces = 0;
-  const loop: FixedLoop = new FixedLoop({
-    stepHz: cfg.sim.stepHz,
-    maxStepsPerFrame: cfg.sim.maxStepsPerFrame,
-    step: (tick, dt) => {
-      const f = swipe.frame(selected);
-      recorder.push(tick, f);
-      stepSim(sim, f, dt, simCfg);
-    },
-    render: (alpha) => {
-      world.update(sim, alpha);
-      world.scene.render();
-      const m = sim.machine;
-      if (m.phase !== lastPhase) {
-        if (m.phase === PHASE_CUE) sound.beep(660, 0.12);
-        if (m.phase === PHASE_FLIGHT) sound.beep(180, 0.09, 0.25, 'square');
-        lastPhase = m.phase;
-      }
-      if (sim.ball.bounces !== lastBounces) {
-        if (sim.ball.bounces > lastBounces) sound.beep(110, 0.07, 0.2, 'triangle');
-        lastBounces = sim.ball.bounces;
-      }
-      if (m.phase === PHASE_CUE) overlay.setCue('BALL COMING', 'rgba(200,120,0,.85)');
-      else if (m.phase === PHASE_FLIGHT && sim.ball.active) overlay.setCue('IN FLIGHT', 'rgba(150,30,30,.85)');
-      else overlay.setCue('READY', 'rgba(0,0,0,.5)');
-      const bl = sim.ball;
-      if (m.count > 0) {
-        const pitched = bl.bounces > 0 ? `${(bl.bz + 10.06).toFixed(1)} m` : '-';
-        const atBat = bl.crossed ? `  at crease: ${(bl.crossSpeed * 3.6).toFixed(0)} km/h, height ${bl.crossY.toFixed(2)} m` : '';
-        overlay.setInfo(`Ball ${m.count}: ${m.speedKmh.toFixed(0)} km/h, pitched ${pitched} from stumps${atBat}`);
-      }
-      overlay.setShot(shotText(sim.shot, cfg.bat.sweetSpot, cfg.bat.halfWidth));
-      overlay.setStance(selected, sim.stance.gate, STANCE_NAMES[sim.stance.gate]!);
-      const now = performance.now();
-      if (now - hudAt > 120) {
-        hudAt = now;
-        const online = navigator.onLine ? 'online' : 'offline';
-        overlay.setHud(
-          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat ${(sim.swing.alpha * 57.3).toFixed(0)} deg  power ${(sim.swing.power * 100).toFixed(0)}%\nstate ${hashSim(sim)}`,
-          cfg.debug.hud,
-        );
-      }
+  let lastPose = to;
+  let last = performance.now();
+  engine.runRenderLoop(() => {
+    const now = performance.now();
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    t = Math.min(1, t + dt / 0.4);
+    const k = t * t * (3 - 2 * t);
+    lastPose = lerpPose(from, to, k);
+    man.apply(lastPose);
+    place();
+    stage.scene.render();
+  });
+  choose(0);
+  registerServiceWorker({
+    onUpdateReady: (apply) => {
+      const b = document.createElement('button');
+      b.textContent = 'New version ready: tap to update';
+      b.style.cssText = 'position:fixed;left:50%;bottom:10px;transform:translateX(-50%);font:600 14px system-ui;padding:10px 14px;border-radius:10px;border:0;background:#f9a825;color:#000;z-index:9';
+      b.onclick = () => apply();
+      ui.appendChild(b);
     },
   });
-  loop.start();
 }
 
-main().catch((e: unknown) => {
-  const msg = e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e);
-  if (window.__showError) window.__showError(`Startup failed: ${msg}`);
-  else console.error(msg);
-});
+main();
