@@ -193,7 +193,7 @@ class Snake {
     const cum = [0];
     for (let i = 1; i < poly.length; i++) cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y, poly[i].z - poly[i - 1].z));
     const q0 = {}, q1 = {}, q2 = {}, d = .22;
-    const lift = this.lift * .62, cf = this.climbF;
+    const lift = this.lift * .72, cf = this.climbF;
     // head
     this.pitch += ((this.climb ? -1.3 : 0) - this.pitch) * (1 - Math.exp(-.016 * 11));
     this.headNode.position.set(this.head.x, this.head.y + .36 + lift, this.head.z);
@@ -217,12 +217,17 @@ class Snake {
       const r = sg.s / 2;
       let lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
       const cl = this.coil;
-      if (cl > .001) { // idle: coil up around the raised head, cobra style
-        const k = Math.max(0, i - 1), fwd = this.heading + Math.PI;
-        let ang = fwd; for (let j = 0; j < k; j++) ang += .62 / (.5 + .1 * j);
+      if (cl > .001) { // idle: tight cobra rest - neck rises from a closed, stacked coil
+        const bk = this.heading + Math.PI, bx = Math.sin(bk), bz = Math.cos(bk);
+        const ccx = this.head.x + bx * .4, ccz = this.head.z + bz * .4; // coil centre, just behind the raised head
         let cx, cz, cy;
-        if (i === 0) { cx = this.head.x + Math.sin(fwd) * .24; cz = this.head.z + Math.cos(fwd) * .24; cy = .3; }
-        else { const rr = i === 1 ? .46 : .5 + .1 * k; cx = this.head.x + Math.sin(ang) * rr; cz = this.head.z + Math.cos(ang) * rr; cy = i === 1 ? .06 : 0; }
+        if (i === 0) { cx = this.head.x + bx * .14; cz = this.head.z + bz * .14; cy = .52; }
+        else if (i === 1) { cx = this.head.x + bx * .27; cz = this.head.z + bz * .27; cy = .2; }
+        else {
+          const k = i - 2, loop2 = k >= 3, rr = loop2 ? .3 : .44;
+          const ang = bk + 2.2 + k * 2.09 + (loop2 ? 1.0 : 0);
+          cx = ccx + Math.sin(ang) * rr; cz = ccz + Math.cos(ang) * rr; cy = loop2 ? .28 + (k - 3) * .03 : 0;
+        }
         const e = cl * cl * (3 - 2 * cl);
         x = lerp(x, cx, e); z = lerp(z, cz, e);
         lf = lf * (1 - e) + cy * e;
