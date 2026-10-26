@@ -69,6 +69,27 @@ class Snake {
     });
     this.tongue = part(B.MeshBuilder.CreateBox('tongue', { width: 1, height: 1, depth: 1 }, sc), head, 0, -.04, .45, this._mat(0xd8343c, .1, .3), .03, .012, .2);
     this.yaws = SEGS.map(() => 0);
+    this._buildGhost();
+  }
+
+  // x-ray silhouette: a translucent copy drawn only where something is in front of the snake (depth GREATER), so blocks never hide it
+  _buildGhost() {
+    const sc = this.scene;
+    const gm = new B.StandardMaterial('ghost', sc);
+    gm.diffuseColor = col3(0x8ff5d0); gm.emissiveColor = col3(0x8ff5d0); gm.specularColor = new B.Color3(0, 0, 0);
+    gm.disableLighting = true; gm.alpha = .45; gm.depthFunction = B.Constants.GREATER; gm.zOffset = -4; gm.disableDepthWrite = true;
+    this.ghosts = []; const gn = new Map();
+    const node = (n) => {
+      if (!n) return null; if (gn.has(n)) return gn.get(n);
+      const g = new B.TransformNode('g' + n.name, sc); g.parent = node(n.parent); gn.set(n, g); this.ghosts.push([n, g]); return g;
+    };
+    for (const m of this.meshes.slice()) {
+      const g = m.clone('g_' + m.name, null); g.parent = node(m.parent); g.material = gm; g.isPickable = false; g.alphaIndex = 30;
+      this.ghosts.push([m, g]);
+    }
+  }
+  _syncGhost() {
+    for (const [a, b] of this.ghosts) { b.position.copyFrom(a.position); b.scaling.copyFrom(a.scaling); if (a.rotation) b.rotation.copyFrom(a.rotation); }
   }
 
   // sample a point along polyline at arc-length s
@@ -224,5 +245,6 @@ class Snake {
       dt_.position.set(q[0], q[1] + q[3] * .98, q[2]);
       dt_.scaling.set(q[3] * 1.0, q[3] * .5, q[3] * 1.0);
     }
+    this._syncGhost();
   }
 }
