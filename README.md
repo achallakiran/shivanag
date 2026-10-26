@@ -5,3 +5,6 @@
 Plan: Phase 2 first playable over (easy ball, swipe to hit), Phase 3 shot depth, Phase 4 match, Phase 5 feel, Phase 6 tuning.
 
 Tools: `npm run check` (types, tests, build, offline check); `npx tsx tools/posegallery.ts <dir>` renders every pose from four cameras.
+
+## v0.10.0: first playable demo
+One easy over (6 balls, 70-82 km/h). Pick a stance with the buttons, swipe when the ball reaches the bat. Swipe down = straight (toward the camera), sideways = that side, up = behind; faster swipe = harder and higher. Result text shows Perfect / Early / Late, then runs, FOUR, SIX, CAUGHT or BOWLED. No fielders yet (Phase 4).
