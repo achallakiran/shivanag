@@ -602,7 +602,7 @@ class Snake {
     this.t = 1; this.dur = 0.2; this.wish = null;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
-    this.mv = 0; this.idle = 0; this.lift = 0; this.coil = 0; this.phase = 0; this.hood = 1;
+    this.mv = 0; this.idle = 0; this.lift = 0; this.phase = 0; this.hood = 1;
     this.head = { x: b.x, y: top, z: b.z };
     this.meshes = [];
     this._build();
@@ -760,7 +760,6 @@ class Snake {
     this.idle = moving ? 0 : this.idle + dt;
     const liftT = (this.idle > .45 && !this.climb) ? 1 : 0;
     this.lift += (liftT - this.lift) * (1 - Math.exp(-dt * 4.5));
-    this.coil += (liftT - this.coil) * (1 - Math.exp(-dt * 3.2));
     this.climbF += ((this.climb ? 1 : 0) - this.climbF) * (1 - Math.exp(-dt * 9));
     this.phase += dt * (7 * this.mv);
     this.hood += ((moving ? .52 : 1) - this.hood) * (1 - Math.exp(-dt * 7));
@@ -778,7 +777,7 @@ class Snake {
     const cum = [0];
     for (let i = 1; i < poly.length; i++) cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y, poly[i].z - poly[i - 1].z));
     const q0 = {}, q1 = {}, q2 = {}, d = .22;
-    const lift = this.lift * .72, cf = this.climbF;
+    const lift = this.lift * .62, cf = this.climbF;
     // head
     this.pitch += ((this.climb ? -1.3 : 0) - this.pitch) * (1 - Math.exp(-.016 * 11));
     this.headNode.position.set(this.head.x, this.head.y + .36 + lift, this.head.z);
@@ -800,23 +799,7 @@ class Snake {
       const wv = Math.sin(this.phase - i * 1.1) * amp;
       x += -tz * wv; z += tx * wv;
       const r = sg.s / 2;
-      let lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
-      const cl = this.coil;
-      if (cl > .001) { // idle: tight cobra rest - neck rises from a closed, stacked coil
-        const bk = this.heading + Math.PI, bx = Math.sin(bk), bz = Math.cos(bk);
-        const ccx = this.head.x + bx * .4, ccz = this.head.z + bz * .4; // coil centre, just behind the raised head
-        let cx, cz, cy;
-        if (i === 0) { cx = this.head.x + bx * .14; cz = this.head.z + bz * .14; cy = .52; }
-        else if (i === 1) { cx = this.head.x + bx * .27; cz = this.head.z + bz * .27; cy = .2; }
-        else {
-          const k = i - 2, loop2 = k >= 3, rr = loop2 ? .3 : .44;
-          const ang = bk + 2.2 + k * 2.09 + (loop2 ? 1.0 : 0);
-          cx = ccx + Math.sin(ang) * rr; cz = ccz + Math.cos(ang) * rr; cy = loop2 ? .28 + (k - 3) * .03 : 0;
-        }
-        const e = cl * cl * (3 - 2 * cl);
-        x = lerp(x, cx, e); z = lerp(z, cz, e);
-        lf = lf * (1 - e) + cy * e;
-      }
+      const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
