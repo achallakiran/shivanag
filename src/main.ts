@@ -1,5 +1,4 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
-import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
@@ -16,7 +15,16 @@ import { Sound } from './ui/sound';
 import { registerServiceWorker } from './pwa/register';
 
 const OFFSET = 8.64; // sim z -> stage z (the batter stands at the stage origin)
-const BAT_VIEW = { pos: [0.1, 1.7, 9] as [number, number, number], target: [0, 0.85, 0] as [number, number, number], fill: 0.8 };
+type V3 = [number, number, number];
+// Cameras. The ball is released 17.9 m from the batter, so the first views sit behind the bowler's stumps with a long lens.
+const CAMS: Array<{ name: string; pos: V3; target: V3; fill: number }> = [
+  { name: 'Bowler end', pos: [0.15, 2.3, 21], target: [0, 0.9, 0], fill: 0.5 },
+  { name: 'High behind bowler', pos: [0, 5.5, 23], target: [0, 0.6, 1], fill: 0.35 },
+  { name: 'Batsman close', pos: [0.1, 1.7, 9], target: [0, 0.85, 0], fill: 0.8 },
+  { name: 'Side on', pos: [-9, 1.6, 6], target: [0, 0.9, 6], fill: 0.2 },
+  { name: 'Behind batsman', pos: [0.3, 1.9, -5.5], target: [0, 0.9, 8], fill: 0.2 },
+];
+let camIx = 0;
 
 function main(): void {
   const app = window.__APP__ ?? { version: 'dev', build: 'dev' };
@@ -38,7 +46,7 @@ function main(): void {
     m.diffuseColor = new Color3(0, 0, 0);
     return m;
   };
-  const ballMesh = CreateSphere('ball', { diameter: 0.16, segments: 8 }, stage.scene);
+  const ballMesh = CreateSphere('ball', { diameter: 0.24, segments: 8 }, stage.scene);
   ballMesh.material = flat(0.9, 0.1, 0.1);
   const shadow = CreateDisc('shadow', { radius: 0.12, tessellation: 12 }, stage.scene);
   shadow.rotation.x = Math.PI / 2;
@@ -76,7 +84,17 @@ function main(): void {
     col.appendChild(b);
     return b;
   });
+  const camBtn = document.createElement('button');
+  camBtn.onclick = () => {
+    camIx = (camIx + 1) % CAMS.length;
+    const c = CAMS[camIx]!;
+    camT = [...c.target];
+    camFill = c.fill;
+  };
+  col.appendChild(camBtn);
   const paintButtons = () =>
+    camBtn.textContent = `Camera: ${CAMS[camIx]!.name}`;
+    camBtn.style.cssText = 'font:600 14px system-ui;padding:9px 12px;border-radius:10px;border:1px solid #fff6;color:#fff;background:#1565c0;text-align:left;min-width:132px';
     buttons.forEach((b, k) => {
       b.style.cssText = `font:600 14px system-ui;padding:9px 12px;border-radius:10px;border:1px solid #fff6;color:#fff;background:${k === match.stance ? '#2e7d32' : '#0008'};text-align:left;min-width:132px`;
     });
@@ -87,8 +105,8 @@ function main(): void {
   let seen = 0;
 
   let cur: PoseData = READY_GROUNDED;
-  let camT: [number, number, number] = [...BAT_VIEW.target];
-  let camFill = BAT_VIEW.fill;
+  let camT: V3 = [...CAMS[0]!.target];
+  let camFill = CAMS[0]!.fill;
   let hits = 0;
 
   const loop = new FixedLoop({
@@ -140,14 +158,14 @@ function main(): void {
       shadow.position.set(-x, 0.03, z + OFFSET);
     }
 
-    // camera: broadcast view, then follow a struck ball
+    // camera: the chosen view, and a wider pan to follow a struck ball
+    const cv = CAMS[camIx]!;
     const follow = b.hit === 1 && b.active === 1 && match.phase !== 'wait';
-    const want: [number, number, number] = follow ? [-b.x, Math.max(0.5, b.y * 0.7), b.z + OFFSET] : [...BAT_VIEW.target];
+    const want: V3 = follow ? [-b.x, Math.max(0.5, b.y * 0.7), b.z + OFFSET] : cv.target;
     const k = 1 - Math.exp(-dt * (follow ? 4 : 3));
     camT = [camT[0] + (want[0] - camT[0]) * k, camT[1] + (want[1] - camT[1]) * k, camT[2] + (want[2] - camT[2]) * k];
-    camFill += ((follow ? 0.35 : BAT_VIEW.fill) - camFill) * k;
-    frame(stage.cam, BAT_VIEW.pos, camT, camFill);
-    if (!follow && Vector3.Distance(new Vector3(...camT), new Vector3(...BAT_VIEW.target)) < 0.01) camT = [...BAT_VIEW.target];
+    camFill += ((follow ? Math.min(cv.fill, 0.12) : cv.fill) - camFill) * k;
+    frame(stage.cam, cv.pos, camT, camFill);
 
     // HUD
     score.textContent = `${match.runs}/${match.wickets}   ball ${Math.min(match.index + (match.phase === 'wait' || match.phase === 'cue' ? 1 : 0), BALLS_PER_OVER)}/${BALLS_PER_OVER}   ${match.history.join(' ')}`;
