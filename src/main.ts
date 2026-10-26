@@ -1,4 +1,5 @@
 import { Engine } from '@babylonjs/core/Engines/engine';
+import { Vector3 } from '@babylonjs/core/Maths/math.vector';
 import { Color3 } from '@babylonjs/core/Maths/math.color';
 import { CreateSphere } from '@babylonjs/core/Meshes/Builders/sphereBuilder';
 import { CreateDisc } from '@babylonjs/core/Meshes/Builders/discBuilder';
@@ -12,19 +13,15 @@ import { FixedLoop } from './core/loop';
 import { SwipeInput } from './input/swipe';
 import { DEFAULT_CONFIG } from './config/defaults';
 import { Sound } from './ui/sound';
+import { CAMS, type V3 } from './game/cameras';
 import { registerServiceWorker } from './pwa/register';
 
 const OFFSET = 8.64; // sim z -> stage z (the batter stands at the stage origin)
-type V3 = [number, number, number];
-// Cameras. The ball is released 17.9 m from the batter, so the first views sit behind the bowler's stumps with a long lens.
-const CAMS: Array<{ name: string; pos: V3; target: V3; fill: number }> = [
-  { name: 'Bowler end', pos: [0.15, 2.3, 21], target: [0, 0.9, 0], fill: 0.5 },
-  { name: 'High behind bowler', pos: [0, 5.5, 23], target: [0, 0.6, 1], fill: 0.35 },
-  { name: 'Batsman close', pos: [0.1, 1.7, 9], target: [0, 0.85, 0], fill: 0.8 },
-  { name: 'Side on', pos: [-9, 1.6, 6], target: [0, 0.9, 6], fill: 0.2 },
-  { name: 'Behind batsman', pos: [0.3, 1.9, -5.5], target: [0, 0.9, 8], fill: 0.2 },
-];
 let camIx = 0;
+try {
+  const saved = Number(localStorage.getItem('cam'));
+  if (Number.isInteger(saved) && saved >= 0 && saved < CAMS.length) camIx = saved;
+} catch { /* storage is optional */ }
 
 function main(): void {
   const app = window.__APP__ ?? { version: 'dev', build: 'dev' };
@@ -87,6 +84,7 @@ function main(): void {
   const camBtn = document.createElement('button');
   camBtn.onclick = () => {
     camIx = (camIx + 1) % CAMS.length;
+    try { localStorage.setItem('cam', String(camIx)); } catch { /* optional */ }
     const c = CAMS[camIx]!;
     camT = [...c.target];
     camFill = c.fill;
@@ -105,8 +103,8 @@ function main(): void {
   let seen = 0;
 
   let cur: PoseData = STANCES[0]!.pose;
-  let camT: V3 = [...CAMS[0]!.target];
-  let camFill = CAMS[0]!.fill;
+  let camT: V3 = [...CAMS[camIx]!.target];
+  let camFill = CAMS[camIx]!.fill;
   let hits = 0;
 
   const loop = new FixedLoop({
@@ -153,7 +151,8 @@ function main(): void {
       const pulse = match.phase === 'cue' ? 1 + 0.35 * Math.sin(match.t * 14) : 1;
       const [x, y, z] = match.phase === 'cue' ? [0, 2.15, 9.26] : [b.x, b.y, b.z];
       ballMesh.position.set(-x, y, z + OFFSET);
-      ballMesh.scaling.setAll(pulse);
+      ballMesh.scaling.setAll(pulse * CAMS[camIx]!.ball);
+      shadow.scaling.setAll(CAMS[camIx]!.ball);
       shadow.position.set(-x, 0.03, z + OFFSET);
     }
 
@@ -164,7 +163,11 @@ function main(): void {
     const k = 1 - Math.exp(-dt * (follow ? 4 : 3));
     camT = [camT[0] + (want[0] - camT[0]) * k, camT[1] + (want[1] - camT[1]) * k, camT[2] + (want[2] - camT[2]) * k];
     camFill += ((follow ? Math.min(cv.fill, 0.12) : cv.fill) - camFill) * k;
-    frame(stage.cam, cv.pos, camT, camFill);
+    if (cv.fov) {
+      stage.cam.position.set(cv.pos[0], cv.pos[1], cv.pos[2]);
+      stage.cam.setTarget(new Vector3(camT[0], camT[1], camT[2]));
+      stage.cam.fov = (cv.fov * Math.PI) / 180;
+    } else frame(stage.cam, cv.pos, camT, camFill);
 
     // HUD
     score.textContent = `${match.runs}/${match.wickets}   ball ${Math.min(match.index + (match.phase === 'wait' || match.phase === 'cue' ? 1 : 0), BALLS_PER_OVER)}/${BALLS_PER_OVER}   ${match.history.join(' ')}`;
