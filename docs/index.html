@@ -1024,7 +1024,7 @@ class OccPlugin extends B.MaterialPluginBase {
 
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 2.5, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { step: .55, wait: 1.0, range: 5, darkRange: 1.5, halfAng: Math.PI / 4, eye: 2.2, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
