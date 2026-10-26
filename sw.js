@@ -1,6 +1,6 @@
 /* Voxel Cricket service worker. Cache-first, so the game runs with no network.
    A new build is only activated when the page asks for it (SKIP_WAITING). */
-const CACHE = 'voxel-cricket-0.7.2-8ae61dfa';
+const CACHE = 'voxel-cricket-0.7.3-fb9a4114';
 const ASSETS = ["./","./index.html","./manifest.webmanifest","./icon-192.png","./icon-512.png","./apple-touch-icon.png"];
 
 self.addEventListener('install', (event) => {

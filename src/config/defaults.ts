@@ -85,7 +85,7 @@ export const DEFAULT_CONFIG: GameConfig = {
   swing: { swipeSlow: 0.6, swipeFast: 3.5, minOmega: 10, maxOmega: 26, accel: 170, decel: 420, hold: 0.18, recoverOmega: 4, followDef: 0, followMax: 1.3, faceLow: -0.15, faceHigh: 0.35 },
   bat: { sweetSpot: 0.8, sweetWidth: 0.1, acorSweet: 0.3, acorEdge: 0.1, friction: 0.35, halfWidth: 0.09, halfThick: 0.035, edgeTilt: 1, deadBat: 0.2 },
   stance: { footSpeed: 3.2, hipSpeed: 1.4, leanSpeed: 1, weightSpeed: 2.5, backStep: 0.4, sitReach: 0.55, sitDrop: 0.4, frontStride: 0.65, stepOut: 1.4, turnSpeed: 3, handSpeed: 1.2 },
-  body: { height: 1.8, stanceWidth: 0.45, crouch: 0.1, lean: 0.12, guardOffset: 0.12, open: 0.6 },
+  body: { height: 1.8, stanceWidth: 0.45, crouch: 0.1, lean: 0.12, guardOffset: 0.12, open: 0.2 },
   ball: { radius: 0.036, drag: 0.0061, magnus: 0.00055, pitchE: 0.56, pitchMu: 0.55, pitchRoll: 0.5, grassE: 0.35, grassMu: 0.5, grassRoll: 1.8, visualScale: 2.5 },
   machine: { speedKmh: 110, line: 0.1, length: 5.5, speedJitter: 6, lineJitter: 0.2, lengthJitter: 0.8, cue: 1, pause: 2 },
   render: { maxPixelRatio: 2 },

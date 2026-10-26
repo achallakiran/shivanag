@@ -171,8 +171,11 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
   headMesh = mk('head', skin, (p, f, k) => span(headMesh, [p.head[0], p.head[1] - 0.1 * k, p.head[2]], [p.head[0], p.head[1] + 0.1 * k, p.head[2]], 0.19 * k, 0.21 * k, face(f))).mesh;
   let helmet!: Mesh;
   helmet = mk('helmet', navy, (p, f, k) => span(helmet, [p.head[0], p.head[1] + 0.0, p.head[2]], [p.head[0], p.head[1] + 0.15 * k, p.head[2]], 0.25 * k, 0.27 * k, face(f))).mesh;
+  // Face: a dark eye band and one thin guard bar across the chin, so the skin shows.
+  let eyes!: Mesh;
+  eyes = mk('eyes', dark, (p, f, k) => span(eyes, [p.head[0], p.head[1] + 0.02 * k, p.head[2] + 0.115 * k], [p.head[0], p.head[1] + 0.045 * k, p.head[2] + 0.115 * k], 0.15 * k, 0.02 * k, [0, 0, 1])).mesh;
   let grill!: Mesh;
-  grill = mk('grill', dark, (p, f, k) => span(grill, [p.head[0], p.head[1] - 0.1 * k, p.head[2] + 0.13 * k], [p.head[0], p.head[1] + 0.02 * k, p.head[2] + 0.13 * k], 0.17 * k, 0.03 * k, [0, 0, 1])).mesh;
+  grill = mk('grill', dark, (p, f, k) => span(grill, [p.head[0], p.head[1] - 0.08 * k, p.head[2] + 0.125 * k], [p.head[0], p.head[1] - 0.06 * k, p.head[2] + 0.125 * k], 0.17 * k, 0.03 * k, [0, 0, 1])).mesh;
   let handle!: Mesh;
   handle = mk('handle', dark, (p) => {
     const ax = norm3(p.batToe, p.batTop);

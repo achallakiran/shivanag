@@ -1,6 +1,6 @@
 {
   "name": "voxel-cricket",
-  "version": "0.7.2",
+  "version": "0.7.3",
   "private": true,
   "description": "Voxel cricket game - offline-first, mobile, batting mechanics first",
   "type": "module",

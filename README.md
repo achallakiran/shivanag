@@ -10,6 +10,8 @@ Hard requirements:
 
 ## Status
 
+**v0.7.3, Face and side-on stance.** The black block over the face was the helmet guard; it is now an eye band and a thin chin bar so the face shows. Body is more side-on (chest open 0.6 to 0.2 rad).
+
 **v0.7.2, Backlift tuned.** Lifted bat now angles back and out toward the slips behind the shoulder, hands low by the back hip.
 
 **v0.7.1, Backlift.** The bat now rests grounded behind the toes while waiting, then lifts high and back toward the slips as the ball is cued (tilt and direction are per-stance data), and comes down straight.
