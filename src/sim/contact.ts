@@ -89,6 +89,9 @@ export function contactHook(ctx: ContactCtx): (b: BallState, frac: number) => vo
     const sweetOffset = (s - bat.sweetSpot) / bat.sweetWidth;
     let q = bat.acorEdge + (bat.acorSweet - bat.acorEdge) * Math.exp(-sweetOffset * sweetOffset);
     q *= 1 - 0.5 * lc * lc;
+    // soft hands: a bat that is nearly still takes the sting out of the ball
+    const bs = Math.sqrt(dot(vb, vb));
+    q *= bat.deadBat + (1 - bat.deadBat) * Math.min(1, bs / 14);
     const jn = -(1 + q) * vn;
 
     // friction at the ball's surface point (spin included), solid sphere

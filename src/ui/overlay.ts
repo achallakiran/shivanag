@@ -97,7 +97,9 @@ export class Overlay {
       if (!f) return;
       this.say(await this.actions.importSettings(await f.text()));
     });
-    root.append(this.hud, this.cue, this.shotCard, this.info, this.stanceLabel, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
+    const hint = h('div', 'position:absolute;right:calc(env(safe-area-inset-right) + 14px);bottom:calc(env(safe-area-inset-bottom) + 30px);color:rgba(255,255,255,.55);font:700 13px -apple-system,system-ui,sans-serif;text-align:right;line-height:1.35;', 'SWIPE HERE\nupward = straight, left = off side,\nright = leg side, fast = hard');
+    hint.style.whiteSpace = 'pre';
+    root.append(hint, this.hud, this.cue, this.shotCard, this.info, this.stanceLabel, this.rotate, skelBtn, camBtn, menuBtn, this.toastBox, this.panel, this.banner, this.fileInput);
     const onResize = () => {
       this.rotate.style.display = window.innerHeight > window.innerWidth ? 'block' : 'none';
     };

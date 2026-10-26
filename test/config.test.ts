@@ -25,14 +25,14 @@ function fakeStorage() {
 test('merge clamps numbers to limits and ignores bad input', () => {
   const c = mergeConfig(DEFAULT_CONFIG, {
     sim: { stepHz: 99999, maxStepsPerFrame: 'lots' },
-    input: { deadZone: -3, smoothing: Number.NaN },
+    input: { swipeMinPx: -3, swipeWindowMs: Number.NaN },
     unknown: { x: 1 },
     swing: { maxOmega: 12 },
   });
   assert.equal(c.sim.stepHz, 480);
   assert.equal(c.sim.maxStepsPerFrame, DEFAULT_CONFIG.sim.maxStepsPerFrame);
-  assert.equal(c.input.deadZone, 0);
-  assert.equal(c.input.smoothing, DEFAULT_CONFIG.input.smoothing);
+  assert.equal(c.input.swipeMinPx, 8);
+  assert.equal(c.input.swipeWindowMs, DEFAULT_CONFIG.input.swipeWindowMs);
   assert.equal(c.swing.maxOmega, 12);
   assert.equal((c as unknown as Record<string, unknown>).unknown, undefined);
 });
@@ -51,7 +51,7 @@ test('patchFromPath builds a nested patch', () => {
 });
 
 test('export then import round-trips', () => {
-  const c = mergeConfig(DEFAULT_CONFIG, { input: { stickRadiusPx: 120 }, debug: { hud: false } });
+  const c = mergeConfig(DEFAULT_CONFIG, { input: { swipeMinPx: 40 }, debug: { hud: false } });
   const back = importSettings(exportSettings(c));
   assert.deepEqual(back, c);
 });

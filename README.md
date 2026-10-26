@@ -10,7 +10,16 @@ Hard requirements:
 
 ## Status
 
-**v0.6.0, Poses and a bigger player.** The two sticks are gone. Five stance buttons sit on the left edge:
+**v0.7.0, Swipe to swing.** Pick a stance with the buttons, then swipe anywhere on the right of the screen
+as the ball arrives. The swipe's direction is the shot direction (up the screen is straight, left is the off
+side, right is the leg side for a right-hander; down is behind the wicket) and its speed is how hard: a slow
+swipe is a dead-bat defence, a fast one is full power and tilts the face up, which lifts the ball. One swipe is
+one swing. Sideways swipes become cuts, pulls and sweeps because the bat's path is turned to that direction and
+the face is rolled toward the bowler. The ball then leaves the bat according to where it meets it and how fast
+the bat is moving. Menu has `swing.*` and `bat.*` tuning. The defence is still too lively and the contact
+physics get their proper rebuild in v0.8.
+
+Earlier: **v0.6.0, Poses and a bigger player.** The two sticks are gone. Five stance buttons sit on the left edge:
 Back foot, Front foot, Sweep, Reverse sweep, Step up and hit. Tap one to choose it (tap it again for Ready); you
 can change your mind until the swing starts. Each stance is an authored posture (feet, hips, lean, chest turn,
 hands and backlift) and the body moves into it at limited speeds, so a late choice shows. The camera now frames

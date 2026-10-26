@@ -182,32 +182,60 @@ for (let g = 0; g < STANCE_NAMES.length; g++) {
   }
 }
 
-// A scripted front-foot drive: stance held, thumb swept round the circle; frames across the swing.
-{
-  const mc = { ...DEFAULT_CONFIG.machine, line: -0.3, lineJitter: 0, lengthJitter: 0, speedJitter: 0 };
-  const cfg0 = makeSimCfg({ ...DEFAULT_CONFIG, machine: mc }, true);
-  const sim = createSimState(cfg0.stance, true);
-  const dt = 1 / DEFAULT_CONFIG.sim.stepHz;
-  const delay = Number(process.argv[3] ?? 0.26), dur = 0.3;
-  let t0 = -1, frame = 0, lastShot = 0;
-  for (let t = 0; t < 240 * 9 && frame < 12; t++) {
+// Scripted shots: find a swipe timing that connects, then render the swing from the broadcast camera and from behind.
+const mc = { ...DEFAULT_CONFIG.machine, lineJitter: 0, lengthJitter: 0, speedJitter: 0 };
+const shotCfg = makeSimCfg({ ...DEFAULT_CONFIG, machine: mc }, true);
+const sdt = 1 / DEFAULT_CONFIG.sim.stepHz;
+function scripted(sel: number, ang: number, sp: number, delay: number, onTick?: (sim: ReturnType<typeof createSimState>, sw: number) => void) {
+  const sim = createSimState(shotCfg.stance, true);
+  let t0 = -1;
+  for (let t = 0; t < 240 * 6; t++) {
     if (t0 < 0 && sim.ball.active) t0 = t;
-    const sw = t0 < 0 ? -1 : t - (t0 + Math.round(delay / dt));
-    let f = { sel: 2, rx: 0, ry: 0, ra: 0 as 0 | 1 };
-    if (sw >= 0) { const a = Math.min(1.2, (sw * dt) / dur) * Math.PI; f = { ...f, rx: -Math.sin(a), ry: Math.cos(a), ra: 1 }; }
-    stepSim(sim, f, dt, cfg0);
-    world.update(sim, 1);
-    const want = sw >= 0 && sw % 24 === 0 || (sim.shot.count > lastShot);
-    if (want && sw >= -1) {
-      lastShot = sim.shot.count;
-      for (const cam of [0, 1]) {
-        world.setView({ camera: cam, rightHanded: true, skeleton: false });
-        world.update(sim, 1);
-        writeFileSync(`${outDir}/drive-${String(frame).padStart(2, '0')}-${CAMERAS[cam]!.id}.png`, png(render(world, engine).rgb, W, H));
-      }
-      summary.push(`drive ${frame}: sw ${sw}, alpha ${sim.swing.alpha.toFixed(2)}, shot state ${sim.shot.state}, ball v ${Math.hypot(sim.ball.vx, sim.ball.vy, sim.ball.vz).toFixed(1)}`);
-      frame++;
+    const sw = t0 < 0 ? -1 : t - (t0 + Math.round(delay / sdt));
+    const f = sw >= 0 ? { sel, n: 1, dx: -Math.sin(ang), dy: -Math.cos(ang), sp } : { sel, n: 0, dx: 0, dy: 0, sp: 0 };
+    stepSim(sim, f, sdt, shotCfg);
+    onTick?.(sim, sw);
+    if (sim.shot.state === 1 && !onTick) return sim.swing.phase <= 2 ? sim.shot.speed : null;
+  }
+  return null;
+}
+const shots: [string, number, number, number][] = [
+  ['straight-drive', 2, 0, 2.0],
+  ['cover-drive', 2, 0.45, 2.0],
+  ['defence', 2, 0, 0.3],
+  ['power-loft', 5, 0.1, 3.8],
+  ['square-cut', 1, 1.4, 2.5],
+  ['pull', 1, -1.4, 2.5],
+  ['sweep', 3, -1.3, 2.0],
+  ['reverse-sweep', 4, 1.3, 2.0],
+];
+for (const [label, sel, ang, sp] of shots) {
+  let best = -1;
+  let bestSpeed = -1;
+  for (let d = 0.1; d <= 0.9; d += 0.02) {
+    const v = scripted(sel, ang, sp, d);
+    if (v !== null && v > bestSpeed) {
+      best = d;
+      bestSpeed = v;
     }
   }
+  if (best < 0) {
+    summary.push(`${label}: no hit found`);
+    continue;
+  }
+  let frame = 0;
+  scripted(sel, ang, sp, best, (sim, sw) => {
+    if (sw >= -12 && sw % 12 === 0 && frame < 12) {
+      for (const cam of [0, 4]) {
+        world.setView({ camera: cam, rightHanded: true, skeleton: false });
+        world.update(sim, 1);
+        writeFileSync(`${outDir}/shot-${label}-${String(frame).padStart(2, '0')}-${CAMERAS[cam]!.id}.png`, png(render(world, engine).rgb, W, H));
+      }
+      frame++;
+    }
+  });
+  const sim2 = createSimState(shotCfg.stance, true);
+  void sim2;
+  summary.push(`${label}: delay ${best.toFixed(2)} s, exit ${(scripted(sel, ang, sp, best) ?? 0) * 3.6 | 0} km/h`);
 }
 console.log(summary.join('\n'));

@@ -14,16 +14,13 @@ const simCfg = makeSimCfg(cfg, true);
 function session(seed: number, ticks: number): InputFrame[] {
   const rnd = makeRng(seed);
   const out: InputFrame[] = [];
-  let f: InputFrame = { sel: 0, rx: 0, ry: 0, ra: 0 };
+  let f: InputFrame = { sel: 0, n: 0, dx: 0, dy: 0, sp: 0 };
+  let n = 0;
   for (let t = 0; t < ticks; t++) {
     if (rnd() < 0.02) {
-      const r = rnd() < 0.7;
-      f = {
-        sel: Math.floor(rnd() * 6),
-        rx: r ? rnd() * 2 - 1 : 0,
-        ry: r ? rnd() * 2 - 1 : 0,
-        ra: r ? 1 : 0,
-      };
+      const swipe = rnd() < 0.5;
+      const ang = rnd() * Math.PI * 2;
+      f = { sel: Math.floor(rnd() * 6), n: swipe ? ++n : n, dx: swipe ? Math.cos(ang) : f.dx, dy: swipe ? Math.sin(ang) : f.dy, sp: swipe ? rnd() * 4 : f.sp };
     }
     out.push(f);
   }
@@ -64,7 +61,7 @@ test('a recording survives a JSON round trip bit-for-bit', () => {
 
 test('recorder stores only changes and the replayer holds the last frame', () => {
   const rec = new InputRecorder(240);
-  const a: InputFrame = { sel: 3, rx: 0, ry: 0, ra: 0 };
+  const a: InputFrame = { sel: 3, n: 0, dx: 0, dy: 0, sp: 0 };
   for (let t = 0; t < 100; t++) rec.push(t, a);
   const r = rec.toRecording();
   assert.equal(r.frames.length, 1);
@@ -76,7 +73,7 @@ test('recorder stores only changes and the replayer holds the last frame', () =>
 
 test('recorder flags truncation when over its cap', () => {
   const rec = new InputRecorder(240, 3);
-  for (let t = 0; t < 10; t++) rec.push(t, { sel: t % 6, rx: 0, ry: 0, ra: 0 });
+  for (let t = 0; t < 10; t++) rec.push(t, { sel: t % 6, n: 0, dx: 0, dy: 0, sp: 0 });
   assert.equal(rec.truncated, true);
   assert.equal(rec.toRecording().frames.length, 3);
 });

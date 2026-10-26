@@ -11,6 +11,7 @@ import {
   saveConfig,
 } from './config/config';
 import { InputRecorder } from './input/recorder';
+import { SwipeInput } from './input/swipe';
 import { createSimState, hashSim, makeSimCfg, replayRecording, stepSim, type SimCfg } from './sim/sim';
 import { PHASE_CUE, PHASE_FLIGHT } from './sim/machine';
 import { Sound } from './ui/sound';
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
   const sound = new Sound();
   const unlock = () => sound.unlock();
   window.addEventListener('pointerdown', unlock, { passive: true });
+  const swipe = new SwipeInput(canvas, () => cfg.input);
   let selected = READY; // the stance button chosen; tapping the chosen one again returns to Ready
   const recorder = new InputRecorder(cfg.sim.stepHz);
   const sim = createSimState(cfg.stance, simCfg.rightHanded);
@@ -213,7 +215,7 @@ async function main(): Promise<void> {
     stepHz: cfg.sim.stepHz,
     maxStepsPerFrame: cfg.sim.maxStepsPerFrame,
     step: (tick, dt) => {
-      const f = { sel: selected, rx: 0, ry: 0, ra: 0 as 0 | 1 };
+      const f = swipe.frame(selected);
       recorder.push(tick, f);
       stepSim(sim, f, dt, simCfg);
     },
@@ -246,7 +248,7 @@ async function main(): Promise<void> {
         hudAt = now;
         const online = navigator.onLine ? 'online' : 'offline';
         overlay.setHud(
-          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat ${(sim.swing.alpha * 57.3).toFixed(0)} deg\nstate ${hashSim(sim)}`,
+          `v${app.version} (${app.build})  ${online}\nfps ${loop.fps.toFixed(0)}  steps/s ${loop.stepsPerSec.toFixed(0)}  tick ${loop.tick}\nstance ${STANCE_NAMES[sim.stance.gate]}  bat ${(sim.swing.alpha * 57.3).toFixed(0)} deg  power ${(sim.swing.power * 100).toFixed(0)}%\nstate ${hashSim(sim)}`,
           cfg.debug.hud,
         );
       }

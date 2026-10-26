@@ -14,7 +14,7 @@ test('scene builds and renders frames headless', () => {
   const world = createWorld(engine, DEFAULT_CONFIG);
   const s = createSimState();
   for (let i = 0; i < 30; i++) {
-    stepSim(s, { sel: i % 6, rx: -0.5, ry: 1, ra: 1 }, 1 / 240, makeSimCfg(DEFAULT_CONFIG, true));
+    stepSim(s, { sel: i % 6, n: i === 3 ? 1 : 0, dx: -0.6, dy: -0.8, sp: 2 }, 1 / 240, makeSimCfg(DEFAULT_CONFIG, true));
     world.update(s, 0.5);
     world.scene.render();
   }

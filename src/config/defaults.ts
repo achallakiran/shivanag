@@ -2,31 +2,25 @@
 export interface GameConfig {
   sim: { stepHz: number; maxStepsPerFrame: number };
   input: {
-    stickRadiusPx: number; // thumb travel that equals full stick deflection
-    deadZone: number; // 0..1 fraction of the radius ignored
-    smoothing: number; // 0 = none, closer to 1 = heavier (fraction of previous value kept per tick)
-    leftZoneFraction: number; // left stick owns this fraction of the screen width
+    swipeMinPx: number; // finger travel that counts as a swipe
+    swipeWindowMs: number; // the direction and speed are read from the first this-many ms of the swipe
     edgeMarginPx: number; // touches this close to a side edge are ignored (iOS back-swipe)
   };
-  // Circle swing (right stick). The thumb's angle around the stick is the bat's angle in its swing plane:
-  // up is the backlift, and the circle runs up, side, down (contact), other side, up. Angles in radians.
+  // Swing. A swipe launches one swing: its direction sets the shot direction, its speed sets how hard.
+  // Angles in radians; the bat angle alpha runs 0 (backlift) to pi (contact) and on through the follow-through.
   swing: {
-    engage: number; // stick deflection (0..1) that starts tracking the thumb
-    release: number; // deflection below which the thumb counts as released
-    direction: number; // +1 or -1: which way round the circle is the forward swing (right-hander: +1 is counter-clockwise)
-    maxOmega: number; // fastest the bat can rotate, rad/s
-    response: number; // how quickly the bat catches up with the thumb, 1/s
-    recoverOmega: number; // rad/s back to the backlift after release
-    yawReady: number; // shot direction of the swing plane per stance, toward the off side, plus gain from the line stick
-    gainReady: number;
-    yawBack: number;
-    gainBack: number;
-    yawSit: number;
-    gainSit: number;
-    yawFront: number;
-    gainFront: number;
-    yawStep: number;
-    gainStep: number;
+    swipeSlow: number; // swipe speed (screen heights per second) at or below which the shot is a dead-bat defence
+    swipeFast: number; // swipe speed at or above which it is a full-power shot
+    minOmega: number; // bat angular speed for the slowest swing, rad/s
+    maxOmega: number; // and for the fastest
+    accel: number; // rad/s^2 speeding up
+    decel: number; // rad/s^2 slowing into the follow-through
+    hold: number; // seconds the bat stays at the end of the follow-through
+    recoverOmega: number; // rad/s back to the backlift
+    followDef: number; // how far past contact a defensive swing carries on, radians
+    followMax: number; // and a full-power swing
+    faceLow: number; // face tilt at contact (radians above vertical) for a slow swing
+    faceHigh: number; // and for a fast swing: this is what lifts the ball
   };
   // Bat and contact. Distances along the bat are metres from the top of the handle.
   bat: {
@@ -38,6 +32,7 @@ export interface GameConfig {
     halfWidth: number; // contact half width of the blade (a real blade is 0.054; wider is more forgiving)
     halfThick: number;
     edgeTilt: number; // how far the contact normal tilts at the very edge, radians
+    deadBat: number; // fraction of the bounce kept when the bat is nearly still (soft hands)
   };
   // Stances (tap-to-select buttons). Distances in metres, speeds in m/s (or rad/s for turns).
   stance: {
@@ -86,11 +81,11 @@ export interface GameConfig {
 
 export const DEFAULT_CONFIG: GameConfig = {
   sim: { stepHz: 240, maxStepsPerFrame: 16 },
-  input: { stickRadiusPx: 100, deadZone: 0.08, smoothing: 0.5, leftZoneFraction: 0.5, edgeMarginPx: 20 },
-  swing: { engage: 0.35, release: 0.25, direction: 1, maxOmega: 20, response: 40, recoverOmega: 4, yawReady: 0, gainReady: 0.5, yawBack: 0, gainBack: 1.3, yawSit: -1.1, gainSit: 0.5, yawFront: 0, gainFront: 0.6, yawStep: 0, gainStep: 0.5 },
-  bat: { sweetSpot: 0.8, sweetWidth: 0.1, acorSweet: 0.3, acorEdge: 0.1, friction: 0.35, halfWidth: 0.09, halfThick: 0.035, edgeTilt: 1 },
+  input: { swipeMinPx: 28, swipeWindowMs: 120, edgeMarginPx: 20 },
+  swing: { swipeSlow: 0.6, swipeFast: 3.5, minOmega: 10, maxOmega: 26, accel: 170, decel: 420, hold: 0.18, recoverOmega: 4, followDef: 0, followMax: 1.3, faceLow: -0.15, faceHigh: 0.35 },
+  bat: { sweetSpot: 0.8, sweetWidth: 0.1, acorSweet: 0.3, acorEdge: 0.1, friction: 0.35, halfWidth: 0.09, halfThick: 0.035, edgeTilt: 1, deadBat: 0.2 },
   stance: { footSpeed: 3.2, hipSpeed: 1.4, leanSpeed: 1, weightSpeed: 2.5, backStep: 0.4, sitReach: 0.55, sitDrop: 0.4, frontStride: 0.65, stepOut: 1.4, turnSpeed: 3, handSpeed: 1.2 },
-  body: { height: 1.8, stanceWidth: 0.45, crouch: 0.1, lean: 0.12, guardOffset: 0.3, open: 0.6 },
+  body: { height: 1.8, stanceWidth: 0.45, crouch: 0.1, lean: 0.12, guardOffset: 0.12, open: 0.6 },
   ball: { radius: 0.036, drag: 0.0061, magnus: 0.00055, pitchE: 0.56, pitchMu: 0.55, pitchRoll: 0.5, grassE: 0.35, grassMu: 0.5, grassRoll: 1.8, visualScale: 2.5 },
   machine: { speedKmh: 110, line: 0.1, length: 5.5, speedJitter: 6, lineJitter: 0.2, lengthJitter: 0.8, cue: 1, pause: 2 },
   render: { maxPixelRatio: 2 },
@@ -101,27 +96,21 @@ export const DEFAULT_CONFIG: GameConfig = {
 export const LIMITS: Record<string, [number, number]> = {
   'sim.stepHz': [60, 480],
   'sim.maxStepsPerFrame': [1, 64],
-  'input.stickRadiusPx': [20, 200],
-  'input.deadZone': [0, 0.5],
-  'input.smoothing': [0, 0.95],
-  'input.leftZoneFraction': [0.2, 0.8],
+  'input.swipeMinPx': [8, 120],
+  'input.swipeWindowMs': [40, 300],
   'input.edgeMarginPx': [0, 60],
-  'swing.engage': [0.1, 0.8],
-  'swing.release': [0.05, 0.7],
-  'swing.direction': [-1, 1],
-  'swing.maxOmega': [4, 40],
-  'swing.response': [5, 200],
+  'swing.swipeSlow': [0.1, 3],
+  'swing.swipeFast': [0.5, 8],
+  'swing.minOmega': [2, 20],
+  'swing.maxOmega': [8, 45],
+  'swing.accel': [30, 600],
+  'swing.decel': [30, 800],
+  'swing.hold': [0, 1],
   'swing.recoverOmega': [0.5, 20],
-  'swing.yawReady': [-1.6, 1.6],
-  'swing.gainReady': [0, 2],
-  'swing.yawBack': [-1.6, 1.6],
-  'swing.gainBack': [0, 2],
-  'swing.yawSit': [-1.6, 1.6],
-  'swing.gainSit': [0, 2],
-  'swing.yawFront': [-1.6, 1.6],
-  'swing.gainFront': [0, 2],
-  'swing.yawStep': [-1.6, 1.6],
-  'swing.gainStep': [0, 2],
+  'swing.followDef': [0, 1],
+  'swing.followMax': [0.3, 2.5],
+  'swing.faceLow': [-0.4, 0.8],
+  'swing.faceHigh': [0, 1.2],
   'bat.sweetSpot': [0.4, 0.96],
   'bat.sweetWidth': [0.02, 0.3],
   'bat.acorSweet': [0.05, 0.6],
@@ -130,6 +119,7 @@ export const LIMITS: Record<string, [number, number]> = {
   'bat.halfWidth': [0.03, 0.3],
   'bat.halfThick': [0.02, 0.1],
   'bat.edgeTilt': [0, 1.4],
+  'bat.deadBat': [0, 1],
   'stance.footSpeed': [0.5, 10],
   'stance.hipSpeed': [0.2, 5],
   'stance.leanSpeed': [0.2, 5],

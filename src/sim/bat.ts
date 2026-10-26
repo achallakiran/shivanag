@@ -1,5 +1,3 @@
-import type { GameConfig } from '../config/defaults';
-import { BACK, FRONT, READY, REVERSE, STEP, SWEEP } from './stance';
 import type { Vec } from './skeleton';
 
 // The bat is a rod swung about the shoulders in a "swing plane". The plane is the vertical plane
@@ -29,28 +27,11 @@ const unit = (a: Vec): Vec => {
   return [a[0] / l, a[1] / l, a[2] / l];
 };
 
-// Shot direction of the swing plane, in radians toward the off side, from the stance and the line stick.
-export function planeYaw(gate: number, line: number, c: GameConfig['swing']): number {
-  switch (gate) {
-    case BACK:
-      return c.yawBack + c.gainBack * line;
-    case SWEEP:
-      return c.yawSit + c.gainSit * line;
-    case REVERSE:
-      return -c.yawSit + c.gainSit * line;
-    case FRONT:
-      return c.yawFront + c.gainFront * line;
-    case STEP:
-      return c.yawStep + c.gainStep * line;
-    case READY:
-    default:
-      return c.yawReady + c.gainReady * line;
-  }
-}
-
 // Bat pose for a given shoulder centre. `rest` is the hands' resting offset from the shoulders (backlift
 // hands); `armLen` is how far the hands reach along the rod when the arms are extended.
-export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number, blBack = 0.39, blSide = 0): BatFrame {
+// `eps` is the face tilt at contact (radians above vertical); `roll` turns the face about the rod (wrist roll),
+// letting the swing go one way and the face look another. With the defaults the bat is the plain pendulum.
+export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, rightHanded: boolean, armLen: number, blBack = 0.39, blSide = 0, eps = blBack, roll = 0): BatFrame {
   const f = rightHanded ? -1 : 1; // X sign of "toward the off side"
   const fh: Vec = [f * Math.sin(yaw), 0, Math.cos(yaw)]; // horizontal, the direction of the shot
   // Backlift direction: tilted back from vertical toward the keeper, and sideways toward the off side.
@@ -58,13 +39,27 @@ export function batFrame(shoulder: Vec, rest: Vec, alpha: number, yaw: number, r
   const a = unit(add(add([0, 1, 0], mul(fh, -Math.tan(blBack))), mul(off, Math.tan(blSide))));
   const b = unit(add(fh, mul(a, -dot(a, fh)))); // forward, perpendicular to a within the plane
   const ca = Math.cos(alpha);
-  const sa = Math.sin(alpha);
-  const d = unit(add(mul(a, ca), mul(b, -sa)));
-  const t = unit(add(mul(a, -sa), mul(b, -ca)));
-  const w = unit(cross(d, t));
+  // The face tilt at contact is set by shifting the bat's angle a little around the bottom of the swing.
+  const half = Math.sin(alpha / 2);
+  const ae = alpha + (eps - blBack) * half * half;
+  const cb = Math.cos(ae);
+  const sb = Math.sin(ae);
+  const d = unit(add(mul(a, cb), mul(b, -sb)));
+  let t = unit(add(mul(a, -sb), mul(b, -cb)));
+  let w = unit(cross(d, t));
+  if (roll !== 0) {
+    const cr = Math.cos(roll);
+    const sr = Math.sin(roll);
+    const t2 = add(mul(t, cr), mul(w, sr));
+    w = add(mul(t, -sr), mul(w, cr));
+    t = t2;
+  }
   // Arms fold in the backlift and reach out along the rod as the swing comes through.
+  // At contact the hands are out in front, in the shot direction, a little below the shoulders.
   const e = 0.5 * (1 - ca);
-  const reach = add(mul(rest, 1 - e), mul(d, armLen * e));
+  // The hands also lean a little toward the off side, in front of the front pad, whatever the shot direction.
+  const out = add(add(mul(fh, armLen * 0.8), [0, -armLen * 0.55, 0]), [f * armLen * 0.35, 0, 0]);
+  const reach = add(mul(rest, 1 - e), mul(out, e));
   let hands = add(shoulder, reach);
   let top = add(hands, mul(d, -HAND_TO_TOP));
   // The toe never goes below the ground: the hands ride up instead.

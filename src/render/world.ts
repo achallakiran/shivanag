@@ -261,7 +261,7 @@ export function createWorld(engine: AbstractEngine, cfg: Pick<GameConfig, 'body'
     const rh = state.rightHanded;
     const sp = lerpPose(s.stance.prev, s.stance.pose, alpha);
     const f = facingVec(rh, body.open + sp.open);
-    const pose = solvePose({ stance: sp, alpha: batAlpha, yaw, rightHanded: rh, baseZ: BAT_Z }, body);
+    const pose = solvePose({ stance: sp, alpha: batAlpha, yaw, eps: sw.eps || sp.blBack, roll: sw.roll, rightHanded: rh, baseZ: BAT_Z }, body);
     lastPose = pose;
     for (const p of parts) p.place(pose, f, D.scale);
     if (state.skeleton) {

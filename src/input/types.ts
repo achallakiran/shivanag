@@ -1,10 +1,13 @@
-// One sample of the player's input. `sel` is the stance chosen with the buttons (0 = Ready).
-// rx/ry/ra are a placeholder for the swing until swipes arrive: ra is 1 while a thumb is down.
+// One sample of the player's input, held until it changes.
+// sel: the stance chosen with the buttons (0 = Ready).
+// n, dx, dy, sp: the latest swipe. n counts swipes (a new number means a new swipe); (dx, dy) is the unit swipe
+// direction in screen terms (dy grows downward); sp is its speed in screen heights per second.
 export interface InputFrame {
   sel: number;
-  rx: number;
-  ry: number;
-  ra: 0 | 1;
+  n: number;
+  dx: number;
+  dy: number;
+  sp: number;
 }
 
-export const EMPTY_FRAME: InputFrame = { sel: 0, rx: 0, ry: 0, ra: 0 };
+export const EMPTY_FRAME: InputFrame = { sel: 0, n: 0, dx: 0, dy: 0, sp: 0 };
