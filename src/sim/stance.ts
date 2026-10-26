@@ -60,8 +60,8 @@ export function targetPose(gate: number, c: StanceCfg, rightHanded: boolean, lif
   let wf = 0.5;
   let open = 0;
   let hands: [number, number, number] = [0.1, -0.46, 0.1];
-  let blBack = 0.6; // tilt of the lifted bat from vertical
-  let blSide = 1.0; // azimuth of that tilt: 0 back toward the keeper, pi/2 toward the off side (gully)
+  let blBack = 0.95; // tilt of the lifted bat from vertical
+  let blSide = 0.55; // azimuth of that tilt: 0 back toward the keeper, pi/2 toward the off side (gully)
   let bfLift = 0;
   switch (gate) {
     case BACK: // back and across: rear foot goes back toward off stump, weight on it, upright, bat high
