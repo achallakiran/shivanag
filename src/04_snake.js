@@ -175,6 +175,12 @@ class Snake {
     return false;
   }
 
+  reset(cells, top) {
+    this.path = cells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
+    this.cell = { x: cells[0].x, z: cells[0].z, top }; this.climb = null; this.climbF = 0; this.t = 1; this.wish = null; this.lift = 0; this.idle = 0;
+    const a = this.path[1], b = this.path[0]; this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
+  }
+
   get moving() { return this.t < 1; }
 
   update(dt, time) {

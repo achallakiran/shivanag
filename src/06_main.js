@@ -169,6 +169,43 @@
     return null;
   }
 
+
+  // ---- HUD: hearts, guard awareness badges, hit flash, banner ----
+  const hud = document.createElement('div'); hud.id = 'hud';
+  hud.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:6;overflow:hidden';
+  hud.innerHTML = '<div id="hearts" style="position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;font-size:30px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.5)"></div>' +
+    '<div id="flash" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,0) 40%,rgba(255,80,60,.55));opacity:0;transition:opacity .35s"></div>' +
+    '<div id="banner" style="position:absolute;left:0;right:0;top:34%;text-align:center;font:800 clamp(26px,7vw,48px) system-ui;letter-spacing:.08em;color:#fff;text-shadow:0 3px 14px rgba(0,0,0,.6);opacity:0;transition:opacity .4s"></div>';
+  document.body.appendChild(hud);
+  const heartsEl = hud.querySelector('#hearts'), flashEl = hud.querySelector('#flash'), bannerEl = hud.querySelector('#banner');
+  function drawHearts(n, shake) {
+    heartsEl.innerHTML = [0, 1, 2].map(i => `<span style="color:${i < n ? '#f4c542' : 'rgba(255,255,255,.25)'};${shake && i === n ? 'transform:scale(1.4)' : ''}">&#9829;</span>`).join('');
+  }
+  drawHearts(3);
+  const badges = guards.list.map(() => { const d = document.createElement('div'); d.style.cssText = 'position:absolute;transform:translate(-50%,-100%);text-align:center;font:800 26px system-ui;text-shadow:0 2px 5px rgba(0,0,0,.6);display:none'; d.innerHTML = '<div class="ic"></div><div style="width:46px;height:6px;border-radius:3px;background:rgba(0,0,0,.45);overflow:hidden;margin:2px auto 0"><div class="mt" style="height:100%;width:0;background:#ffc83d"></div></div>'; hud.appendChild(d); return d; });
+  let bannerT = 0, hitBlink = 0, restartT = 0;
+  const proj = (x, y, z) => { const v = B.Vector3.Project(new B.Vector3(x, y, z), B.Matrix.Identity(), scene.getTransformMatrix(), rig.cam.viewport.toGlobal(engine.getRenderWidth(), engine.getRenderHeight())); return [v.x / engine.getRenderWidth() * innerWidth, v.y / engine.getRenderHeight() * innerHeight, v.z]; };
+  function showBanner(t, sec) { bannerEl.textContent = t; bannerEl.style.opacity = 1; bannerT = sec; }
+  function resetStage() { snake.reset(level.spawnCells, level.spawnTop); guards.reset(); drawHearts(3); showBanner('TRY AGAIN', 1.6); }
+  function hudUpdate(dt) {
+    for (const e of guards.events.splice(0)) {
+      if (e.t === 'hit') { drawHearts(e.hearts, true); flashEl.style.opacity = 1; setTimeout(() => flashEl.style.opacity = 0, 160); hitBlink = 1.2; }
+      if (e.t === 'lost') { showBanner('LOST A LIFE', 2.2); restartT = 2.2; }
+      if (e.t === 'shout') showBanner('GUARDS ALERTED!', .9);
+    }
+    if (restartT > 0) { restartT -= dt; if (restartT <= 0) resetStage(); }
+    if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.style.opacity = 0; }
+    if (hitBlink > 0) { hitBlink -= dt; const vis = Math.floor(hitBlink * 12) % 2 === 0 || hitBlink <= 0; for (const m of snake.meshes) m.isVisible = vis; if (hitBlink <= 0) for (const m of snake.meshes) m.isVisible = true; }
+    guards.list.forEach((g, i) => {
+      const b = badges[i], show = g.aw > .03 || g.state === 'alert' || g.state === 'search';
+      if (!show) { b.style.display = 'none'; return; }
+      const p = proj(g.pos.x, g.pos.y + 3.9, g.pos.z); if (p[2] > 1 || p[2] < 0) { b.style.display = 'none'; return; }
+      b.style.display = 'block'; b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
+      b.querySelector('.ic').innerHTML = g.state === 'alert' ? '<span style="color:#ff4b3a">!</span>' : g.state === 'search' || g.state === 'susp' ? '<span style="color:#ffc83d">?</span>' : '';
+      const mt = b.querySelector('.mt'); mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
+    });
+  }
+
   // ---- main loop ----
   let time = 0, frames = 0, autoChecked = 0;
   engine.runRenderLoop(() => {
@@ -179,7 +216,7 @@
     snake.update(dt, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);
     props.update(time);
-    guards.update(dt, time, snake);
+    if (restartT <= 0) guards.update(dt, time, snake); hudUpdate(dt);
     { const h = snake.head, q = snake.seg[2].position; if (occ.p) { occ.p.a.set(h.x, h.y + .4, h.z, 1.35); occ.p.b.set(q.x, q.y, q.z, 1.35); } }
     scene.render();
     if (++frames % 20 === 0) $('fps').textContent = engine.getFps().toFixed(0) + ' fps';
@@ -199,6 +236,6 @@
   // title card
   setTimeout(() => { if (!window.__failed) $('title').classList.add('gone'); }, 3200);
   $('title').addEventListener('click', () => $('title').classList.add('gone'));
-  window.__game = { guards, occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
+  window.__game = { resetStage, guards, occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
   window.__ready = true;
 } catch (err) { window.__showErr && window.__showErr((err && err.message) || String(err)); console.error(err); } })();
