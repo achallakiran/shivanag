@@ -1,6 +1,6 @@
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { susp: .25, fill: 1.0, decay: .2, shout: 24, melee: 2.8, rMin: 2.8, rMax: 13, windup: .8, flight: .42, cool: 1.0, hitR: 1.1, search: 14, lose: 6, alertStep: .27, searchStep: .38, biteReach: 4.6, step: .5, wait: .8, range: 14, darkRange: 5.5, halfAng: Math.PI * .33, hear: 9, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { susp: .25, fill: 1.0, decay: .2, shout: 24, melee: 2.8, rMin: 2.8, rMax: 13, windup: .8, flight: .42, cool: 1.0, hitR: 1.1, search: 14, lose: 6, alertStep: .27, searchStep: .38, biteReach: 4.6, sleepFor: 120, step: .5, wait: .8, range: 14, darkRange: 5.5, halfAng: Math.PI * .33, hear: 9, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
@@ -263,7 +263,7 @@ class Guard {
         if (dist <= GCFG.melee && dy <= 4) kind = 'melee';
         else if (dist >= GCFG.rMin && dist <= GCFG.rMax) kind = 'ranged';
         if (kind) {
-          this.atk = { kind, t: 0, phase: 'wind', tx: snake.head.x, tz: snake.head.z, ty: snake.head.y };
+          this.atk = { kind, t: 0, w: GCFG.windup * (.75 + Math.random() * .55), phase: 'wind', tx: snake.head.x, tz: snake.head.z, ty: snake.head.y };
           this.hold = true; this.path = []; this._faceTo(snake.head.x, snake.head.z);
           this.marker.setEnabled(true); this.marker.position.set(snake.head.x, snake.head.y + .05, snake.head.z);
         }
@@ -283,7 +283,7 @@ class Guard {
     a.t += dt;
     if (a.phase === 'wind') {
       this.armR.rotation.x = -2.6;
-      if (a.t >= GCFG.windup) {
+      if (a.t >= a.w) {
         if (a.kind === 'melee') { this.armR.rotation.x = -.2; if (!a.slipped && mgr.hitCheck(a.tx, a.tz, a.ty, snake)) mgr.damage(this); a.phase = 'rec'; a.t = 0; this.marker.setEnabled(false); }
         else { a.phase = 'fly'; a.t = 0; this.armR.rotation.x = -.2; this.spear.setEnabled(true); a.sx = this.cell.x + .5; a.sz = this.cell.z + .5; a.sy = this.cell.top + 2.4; }
       }
@@ -312,7 +312,7 @@ class Guard {
 
   // topple over with a hop, then dizzy stars circle the head
   _sleepAnim(dt) {
-    this.sleepT += dt; const k = Math.min(1, this.sleepT / .55), e = 1 - Math.pow(1 - k, 3);
+    this.sleepT += dt; if (this.sleepT >= GCFG.sleepFor) { this._wake(); return; } const k = Math.min(1, this.sleepT / .55), e = 1 - Math.pow(1 - k, 3);
     this.root.rotation.x = -Math.PI / 2 * e;
     this.root.position.y = this.cell.top + .7 * e + Math.sin(Math.PI * Math.min(1, k * 1.4)) * .9;
     this.root.position.x = this.cell.x + .5; this.root.position.z = this.cell.z + .5;
@@ -325,6 +325,15 @@ class Guard {
       m.scaling.setAll((.8 + .25 * Math.sin(this.sleepT * 9 + i * 2)) * fade);
     }
   }
+
+  _wake() {
+    this.root.rotation.x = 0; this.coneMesh.setEnabled(true); for (const m of this.stars) m.setEnabled(false);
+    this.state = 'patrol'; this.aw = 0; this.atk = null; this.hold = false; this.cd = 1; this.path = []; this.sees = false; this.timer = 0; this.stepDur = GCFG.step;
+    this.from = { x: this.cell.x + .5, z: this.cell.z + .5, y: 2 }; this.to = this.from; this.t = 1; this.acc = 0; this.last = null;
+    this._nextLeg(); this._updateCone(true);
+  }
+
+  get sleepLeft() { return this.state === 'asleep' ? Math.max(0, 1 - this.sleepT / GCFG.sleepFor) : 0; }
 
   reset() {
     this.root.rotation.x = 0; this.coneMesh.setEnabled(true); if (this.stars) for (const m of this.stars) m.setEnabled(false);
@@ -376,6 +385,23 @@ function buildGuards(scene, L) {
   const outer = { color: 0x3a9a5a, pts: [[14, L.D - L.OZ + 2], [L.W - 15, L.D - L.OZ + 2]] }; // patrols the outer south lane
   const guards = routes.map(r => new Guard(scene, L, light, r.pts.map(p => cell(p[0], p[1])), { color: r.color }));
   guards.push(new Guard(scene, L, light, outer.pts, { color: outer.color }));
+  // a garrison: many more patrols, scattered over the courtyard on deterministic loops (never near the snake's start)
+  { const g0 = guards[0], W = L.W, D = L.D, sp = L.spawnCells[0]; let seed = 20261027; const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
+    const taken = guards.map(g => [g.cell.x, g.cell.z]), palette = [0xb2703a, 0x7a3ab2, 0x3ab2a8, 0xb2a23a, 0xb23a8a, 0x5a8a3a, 0x8a5a3a, 0x3a7ab2];
+    const reach = (sx, sz) => { const key = (x, z) => x + z * W, seen = new Set([key(sx, sz)]), q = [[sx, sz, 0]], out = [];
+      for (let h = 0; h < q.length && q.length < 1400; h++) { const [x, z, d] = q[h]; out.push([x, z, d]);
+        for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const nx = x + dx, nz = z + dz; if (nx < 1 || nz < 1 || nx >= W - 1 || nz >= D - 1 || seen.has(key(nx, nz))) continue; if (!g0._walkable(nx, nz, 2)) continue; seen.add(key(nx, nz)); q.push([nx, nz, d + 1]); } }
+      return out; };
+    let made = 0, tries = 0;
+    while (made < 11 && tries++ < 400) {
+      const sx = 2 + Math.floor(rnd() * (W - 4)), sz = 2 + Math.floor(rnd() * (D - 4));
+      if (!g0._walkable(sx, sz, 2)) continue;
+      if (Math.hypot(sx - sp.x, sz - sp.z) < 20 || taken.some(t => Math.hypot(t[0] - sx, t[1] - sz) < 9)) continue;
+      const R = reach(sx, sz); if (R.length < 60) continue;
+      const far = R.filter(c => c[2] >= 6 && c[2] <= 26 && Math.hypot(c[0] - sp.x, c[1] - sp.z) > 14); if (far.length < 6) continue;
+      const pts = [[sx, sz]]; for (let k = 0; k < 2 + Math.floor(rnd() * 2); k++) { const c = far[Math.floor(rnd() * far.length)]; pts.push([c[0], c[1]]); }
+      guards.push(new Guard(scene, L, light, pts, { color: palette[made % palette.length] })); taken.push([sx, sz]); made++;
+    } }
   const mgr = {
     list: guards, light, hearts: 3, invuln: 0, lost: 0, events: [], rings: [],
     timers: [], windowG: null, shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
@@ -398,13 +424,13 @@ function buildGuards(scene, L) {
       this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .3 : 1;
       this.windowG = this._slipGuard(snake); this.window = this.windowG !== null;
       this.bite = this._biteTarget(snake);
-      return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .45 : 1;
+      return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .75 : 1;
     },
     addMeter(v) { this.meter = Math.min(1, this.meter + v); },
     _slipGuard(snake) {
       for (const g of guards) {
         const a = g.atk; if (!a || a.slipped || g.state === 'asleep') continue;
-        const open = a.kind === 'melee' ? (a.phase === 'wind' && a.t >= GCFG.windup - .5) : ((a.phase === 'wind' && a.t >= GCFG.windup - .3) || (a.phase === 'fly' && GCFG.flight - a.t <= .45));
+        const open = a.kind === 'melee' ? (a.phase === 'wind' && a.t >= a.w - .26) : ((a.phase === 'wind' && a.t >= a.w - .16) || (a.phase === 'fly' && GCFG.flight - a.t <= .26));
         if (open && Math.hypot(snake.head.x - a.tx, snake.head.z - a.tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - a.ty) <= 3) return g;
       }
       return null;

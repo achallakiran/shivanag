@@ -223,7 +223,7 @@
       const p = proj(g.pos.x, g.pos.y + 3.9, g.pos.z); if (p[2] > 1 || p[2] < 0) { b.style.display = 'none'; return; }
       b.style.display = 'block'; b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
       const ik = g.state === 'asleep' ? 'z' : guards.windowG === g ? 'n' : g.state === 'alert' ? 'a' : g.state === 'search' || g.state === 'susp' ? 'q' : ''; if (b._k !== ik) { b._k = ik; b.querySelector('.ic').innerHTML = { z: '<div class="zz"><i>Z</i><i>z</i><i>z</i></div>', a: '<span style="color:#ff7a3a;font-size:19px">!</span>', n: '<div class="nw"><b>!</b></div><div class="nt">ESCAPE!</div>', q: '<span style="color:#ffc83d">?</span>', '': '' }[ik]; }
-      const mt = b.querySelector('.mt'); b.lastChild.style.display = g.state === 'asleep' ? 'none' : 'block'; mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
+      const mt = b.querySelector('.mt'); const sl = g.state === 'asleep'; mt.style.width = Math.round((sl ? g.sleepLeft : Math.min(1, g.aw)) * 100) + '%'; mt.style.background = sl ? '#6fa8ff' : g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
     });
   }
 
