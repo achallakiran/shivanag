@@ -196,7 +196,7 @@ class Snake {
   // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
   act(type, dx, dz, reach, steps) {
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : type === 'roll' ? .5 : .38, dx, dz, reach: reach || 2, steps: steps || 0, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : type === 'roll' ? .42 : .38, dx, dz, reach: reach || 2, steps: steps || 0, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
     if (type === 'roll') this.actv.hd = this.heading;
     if (type === 'strike') { this.targetHeading = Math.atan2(dx, dz); this.heading = this.targetHeading; }
     this.idle = 0;
@@ -215,7 +215,8 @@ class Snake {
         if (ok && this.t === 0) continue; this.actv.steps = 0;
       }
       const wi = this.wishFn ? this.wishFn() : this.wish; // re-read the input before EVERY step, so held keys stay right as the wall turns
-      if (wi && !this.actv) { this.tryStep(wi); if (this.t === 0) continue; }
+      const A_ = this.actv, locked = A_ && !(A_.type === 'roll' && A_.t > A_.dur * .65); // a roll can be steered out of near its end
+      if (wi && !locked) { this.tryStep(wi); if (this.t === 0) continue; }
       break;
     }
     if (this.climb) this.targetHeading = Math.atan2(this.climb.fx, this.climb.fz);

@@ -42,8 +42,21 @@ class Guard {
     this.t = 1; this.from = { x: this.cell.x + .5, z: this.cell.z + .5, y: 2 }; this.to = this.from;
     this.timer = 0; this.acc = 0; this.walkPh = 0; this.sees = false; this.cone = [];
     this.state = 'patrol'; this.aw = 0; this.last = null; this.unseen = 0; this.atk = null; this.cd = 0; this.stepDur = GCFG.step; this.repath = 0; this.scan = 0; this.hold = false; this.home = route.map(r => r.slice());
-    this._build(); this._nextLeg(); this._updateCone(true);
+    this._build(); this._buildGhost(); this._nextLeg(); this._updateCone(true);
   }
+
+  // x-ray silhouette (like the snake's): a translucent copy drawn only where blocks hide the guard
+  _buildGhost() {
+    const sc = this.scene;
+    if (!Guard._gm) { const gm = new B.StandardMaterial('gghost', sc); gm.diffuseColor = col3(0xffb347); gm.emissiveColor = col3(0xffb347); gm.specularColor = new B.Color3(0, 0, 0);
+      gm.disableLighting = true; gm.alpha = .5; gm.depthFunction = B.Constants.GREATER; gm.zOffset = -4; gm.disableDepthWrite = true; Guard._gm = gm; }
+    this.ghosts = []; const gn = new Map();
+    const node = (n) => { if (!n) return null; if (gn.has(n)) return gn.get(n); const g = new B.TransformNode('g' + n.name, sc); g.parent = node(n.parent); gn.set(n, g); this.ghosts.push([n, g]); return g; };
+    for (const m of this.meshes.slice()) { const g = m.clone('g_' + m.name, null); g.parent = node(m.parent); g.material = Guard._gm; g.isPickable = false; g.alphaIndex = 30; this.ghosts.push([m, g]); }
+    this.ghostRoot = gn.get(this.root); this.ghostOn = true; this.setGhost(false);
+  }
+  setGhost(on) { if (on === this.ghostOn) return; this.ghostOn = on; this.ghostRoot.setEnabled(on); }
+  _syncGhost() { if (!this.ghostOn) return; for (const [a, b] of this.ghosts) { b.position.copyFrom(a.position); b.scaling.copyFrom(a.scaling); if (a.rotation) b.rotation.copyFrom(a.rotation); } }
 
   _build() {
     const sc = this.scene, root = new B.TransformNode('guard', sc); this.root = root; root.scaling.set(2.7, 2.5, 2.7); this.meshes = [];
@@ -110,7 +123,7 @@ class Guard {
   }
 
   update(dt, time, snake, mgr) {
-    if (this.state === 'asleep') { this._sleepAnim(dt); return; }
+    if (this.state === 'asleep') { this._sleepAnim(dt); this._syncGhost(); return; }
     this.acc += dt;
     while (this.acc >= this.stepDur) { this.acc -= this.stepDur; this._tick(); }
     const k = this.t < 1 ? Math.min(1, this.acc / this.stepDur) : 1;
@@ -124,6 +137,7 @@ class Guard {
     this.armR.rotation.x = this.moving ? -sw * .4 : 0;
     this.root.position.y += this.moving ? Math.abs(Math.sin(this.walkPh)) * .04 : 0;
     this._brain(dt, snake, mgr);
+    this._syncGhost();
   }
 
   get moving() { return this.t < 1; }
@@ -436,7 +450,7 @@ function buildGuards(scene, L) {
       this.slow = Math.max(0, this.slow - dt); this.dip = Math.max(0, this.dip - dt); this.escCd = Math.max(0, this.escCd - dt);
       if (this.dashT > 0) { this.dashT -= dt; if (this.dashT <= 0) snake.speedMul = 1; }
       for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt * this.snakeScale; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
-      this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .3 : 1;
+      this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .6 : 1;
       this.windowG = this._slipGuard(snake); this.window = this.windowG !== null;
       this.drop = this._dropTarget(snake); this.bite = this.drop || this._biteTarget(snake);
       return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .75 : 1;
@@ -477,7 +491,7 @@ function buildGuards(scene, L) {
     },
     startShot(snake, g) { // close-up slow-motion cinematic of a takedown
       const gx = g.cell.x + .5, gz = g.cell.z + .5;
-      this.shotT = 1.5; this.dip = Math.max(this.dip, 1.5);
+      this.shotT = 1.2; this.dip = Math.max(this.dip, 1.2);
       this.events.push({ t: 'shot', x: (snake.head.x + gx) / 2, y: g.cell.top + 1.7 + Math.min(4, Math.max(0, snake.head.y - g.cell.top - 3) * .35), z: (snake.head.z + gz) / 2, dx: gx - snake.head.x, dz: gz - snake.head.z });
     },
     // the roll always goes to the snake's SIDE (left or right of where it faces): away from the threat when there is one
@@ -537,6 +551,7 @@ function buildGuards(scene, L) {
     },
     update(dt, time, snake) {
       this.invuln = Math.max(0, this.invuln - dt);
+      for (const g of guards) g.setGhost(Math.hypot(g.pos.x - snake.head.x, g.pos.z - snake.head.z) < 46);
       for (const k of marks) { const on = guards.some(g => g.state !== 'asleep' && Math.hypot(g.pos.x - k.x, g.pos.z - k.z) < .9); if (on !== k.on) { k.on = on; k.m.material = on ? db : dm; } }
       if (this.slow <= 0 && guards.some(g => g.state === 'alert' || g.state === 'search') && !guards.some(g => g.sees)) this.addMeter(.03 * dt);
       for (const g of guards) g.update(dt, time, snake, this);

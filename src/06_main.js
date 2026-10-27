@@ -163,19 +163,19 @@
   const endJoy = (e) => { if (joy && e.pointerId === joy.id) { joy = null; joyEl.style.display = 'none'; } };
   canvas.addEventListener('pointerup', endJoy); canvas.addEventListener('pointercancel', endJoy);
 
-  // while clinging to a wall or trunk the controls follow the SCREEN: up climbs, down descends, left/right go round the wall
-  let spinFor = 0, spinSense = 0;
+  // while clinging: pushing toward the wall climbs, away descends, along it circles. A sideways push keeps its rotational sense
+  // for as long as the key is held, so going round a trunk does not flip into climbing at the corners.
+  let spinFor = '', spinSense = 0;
   function wishFor(v) {
-    if (!snake.climb) { spinFor = 0; return rig.worldDir(v[0], v[1]); }
-    const fx = snake.climb.fx, fz = snake.climb.fz;
-    if (Math.abs(v[1]) >= Math.abs(v[0])) { spinFor = 0; return v[1] > 0 ? [fx, fz] : [-fx, -fz]; }
-    // left/right: pick the rotational sense once, when the key goes down, from the screen direction; then keep circling that way
-    if (spinFor !== v[0] || !spinSense) {
-      const p1 = [-fz, fx], sr = rig.worldDir(1, 0), su = rig.worldDir(0, 1);
-      let d = p1[0] * sr[0] + p1[1] * sr[1]; if (d === 0) d = p1[0] * su[0] + p1[1] * su[1];
-      spinSense = (d > 0 ? 1 : -1) * (v[0] > 0 ? 1 : -1); spinFor = v[0];
-    }
-    return spinSense > 0 ? [-fz, fx] : [fz, -fx];
+    const rw = rig.worldDir(v[0], v[1]);
+    if (!snake.climb) { spinFor = ''; return rw; }
+    const fx = snake.climb.fx, fz = snake.climb.fz, key = v[0] + ',' + v[1];
+    if (spinFor === key && spinSense) return spinSense > 0 ? [-fz, fx] : [fz, -fx];     // already circling: keep going round
+    const dot = rw[0] * fx + rw[1] * fz;
+    if (dot > 0) { spinFor = ''; return [fx, fz]; }
+    if (dot < 0) { spinFor = ''; return [-fx, -fz]; }
+    spinSense = (rw[0] * -fz + rw[1] * fx) > 0 ? 1 : -1; spinFor = key;                 // sideways along the wall: start a circle
+    return rw;
   }
 
   function inputVec() {
