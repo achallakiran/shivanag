@@ -453,19 +453,20 @@ function buildGuards(scene, L) {
       this.shotT = 1.5; this.dip = Math.max(this.dip, 1.5);
       this.events.push({ t: 'shot', x: (snake.head.x + gx) / 2, y: g.cell.top + 1.7, z: (snake.head.z + gz) / 2, dx: gx - snake.head.x, dz: gz - snake.head.z });
     },
-    // a walkable axis to roll along: wanted direction first, then sideways of the threat, then the other side
+    // the roll always goes to the snake's SIDE (left or right of where it faces): away from the threat when there is one
     _rollDir(snake, g, want) {
       const w = snake.world, c = snake.cell, ok = (d) => !snake.climb && w.surface(c.x + d[0], c.z + d[1], c.top) !== null;
-      const cand = [];
-      if (want) cand.push(want);
+      const hx = Math.sin(snake.heading), hz = Math.cos(snake.heading);
+      const side = Math.abs(hx) > Math.abs(hz) ? [0, 1] : [1, 0];           // perpendicular grid axis to the facing
       let tx = null, tz = null;
       if (g) { tx = g.cell.x + .5 - snake.head.x; tz = g.cell.z + .5 - snake.head.z; }
       else { let bd = 1e9; for (const o of guards) { if (o.state === 'asleep') continue; const dx = o.cell.x + .5 - snake.head.x, dz = o.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz); if (d < bd && d < 14) { bd = d; tx = dx; tz = dz; } } }
-      if (tx === null) { tx = Math.sin(snake.heading); tz = Math.cos(snake.heading); }
-      const px = -tz, pz = tx, ax = Math.abs(px) > Math.abs(pz) ? [Math.sign(px), 0] : [0, Math.sign(pz) || 1];
-      cand.push(ax, [-ax[0], -ax[1]], Math.abs(tx) > Math.abs(tz) ? [-Math.sign(tx), 0] : [0, -Math.sign(tz) || 1]);
-      for (const d of cand) if (ok(d)) return { d, moves: true };
-      return { d: cand[0], moves: false };
+      let pick = side;
+      if (want && want[0] * side[0] + want[1] * side[1] !== 0) pick = [want[0] * side[0], want[1] * side[1]];   // a held sideways direction wins
+      else if (tx !== null) pick = (side[0] * tx + side[1] * tz) > 0 ? [-side[0], -side[1]] : side;             // otherwise away from the threat
+      const other = [-pick[0], -pick[1]];
+      for (const d of [pick, other]) if (ok(d)) return { d, moves: true };
+      return { d: pick, moves: false };
     },
     // Attack: bite a guard who hasn't noticed the snake
     attack(snake) {
