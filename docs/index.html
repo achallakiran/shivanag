@@ -859,9 +859,10 @@ class Snake {
   get moving() { return this.t < 1; }
 
   // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
-  act(type, dx, dz, reach) {
+  act(type, dx, dz, reach, steps) {
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : .38, dx, dz, reach: reach || 2, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : type === 'roll' ? .5 : .38, dx, dz, reach: reach || 2, steps: steps || 0, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    if (type === 'roll') this.actv.hd = this.heading;
     if (type === 'strike') { this.targetHeading = Math.atan2(dx, dz); this.heading = this.targetHeading; }
     this.idle = 0;
   }
@@ -873,6 +874,10 @@ class Snake {
         const need = (1 - this.t) * this.dur, use = Math.min(rem, need);
         this.t += use / this.dur; rem -= use;
         if (this.t >= 0.9999) this.t = 1; else break;
+      }
+      if (this.actv && this.actv.type === 'roll' && this.actv.steps > 0) { // the roll really carries the snake sideways
+        this.actv.steps--; this.speedMul = 1.7; const ok = this.tryStep([Math.round(this.actv.dx), Math.round(this.actv.dz)]); this.speedMul = 1;
+        if (ok && this.t === 0) continue; this.actv.steps = 0;
       }
       if (this.wish && !this.actv) { this.tryStep(this.wish); if (this.t === 0) continue; }
       break;
@@ -917,7 +922,13 @@ class Snake {
       const kk = Math.min(1, Math.max(0, k - sd * .06)), v = Math.sin(Math.PI * kk) * 1.35 * Math.max(.35, 1 - sd * .12);
       return [-A.dz * A.side * v, .12 * Math.sin(Math.PI * kk), A.dx * A.side * v];
     };
+    const RO = A && A.type === 'roll' ? (() => { // curl into a wheel and roll sideways
+      const k = A.t / A.dur, c = k < .22 ? Math.pow(k / .22, 2) * (3 - 2 * k / .22) : k > .78 ? Math.pow((1 - k) / .22, 2) * (3 - 2 * (1 - k) / .22) : 1;
+      return { c, th: k * Math.PI * 2.3 * (A.side || 1), dx: A.dx, dz: A.dz, R: .78 };
+    })() : null;
+    const ring = (a, r) => [this.head.x + RO.dx * RO.R * Math.sin(a), this.head.y + r + RO.R * (1 + Math.cos(a)) * .92, this.head.z + RO.dz * RO.R * Math.sin(a)];
     if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
+    if (RO) { const q = ring(RO.th, .3); ox = (q[0] - this.head.x) * RO.c; oz = (q[2] - this.head.z) * RO.c; oy = (q[1] - this.head.y - .36 - lift) * RO.c; roll = RO.c * RO.th * .9; hoodK = RO.c * .3; }
     this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
     this.headNode.rotation.y = this.heading;
     this.headNode.rotation.z = roll;
@@ -951,6 +962,7 @@ class Snake {
       const r = sg.s / 2;
       const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
       const o = off(s); x += o[0]; z += o[2]; y += o[1];
+      if (RO) { const q = ring(RO.th - (i + 1) * .8, sg.s / 2), cc = RO.c; x = lerp(x, q[0], cc); z = lerp(z, q[2], cc); y = lerp(y + sg.s / 2, q[1], cc) - sg.s / 2; }
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
@@ -980,7 +992,21 @@ class CamRig {
     scene.activeCamera = this.cam;
     this.preset = 1; this.yawStep = 0; this.zoom = 1;
     this.cur = null; this.target = new B.Vector3(bounds.W / 2, 2, bounds.D / 2);
-    this.first = true;
+    this.first = true; this.shot = null; this.shotW = 0; this.world = null;
+  }
+
+  // close-up slow-motion shot: a low, tight orbit around (x,y,z), from the first of several angles with a clear view
+  startShot(x, y, z, dx, dz, dur) {
+    const base = Math.atan2(dz, dx), b = this.bounds; let pick = null;
+    const angs = [base + Math.PI / 2, base - Math.PI / 2, base + Math.PI * .8, base - Math.PI * .8, base + Math.PI * .3, base - Math.PI * .3];
+    for (const D of [6.5, 5.2, 4.2]) for (const a of angs) {
+      const px = x + Math.cos(a) * D, pz = z + Math.sin(a) * D, py = y + 1.6 + D * .2;
+      if (px < 1 || pz < 1 || px > b.W - 1 || pz > b.D - 1) continue;
+      if (this.world && [[0, 0], [1.4, 0], [-1.4, 0]].some(o => sightBlocked(this.world, px, py, pz, x + Math.cos(base) * o[0], y - (o[0] ? 1 : 0), z + Math.sin(base) * o[0]))) continue; // snake and guard both in clear view
+      pick = { a, D }; break;
+    }
+    if (!pick) pick = { a: base + Math.PI / 2, D: 3.2 };
+    this.shot = { t: 0, dur: dur || 1.5, x, y, z, a: pick.a, D: pick.D, spin: (Math.random() < .5 ? -1 : 1) * .28 };
   }
   setPreset(i) { this.preset = ((i % PRESETS.length) + PRESETS.length) % PRESETS.length; }
   rotate(dir) { this.yawStep += dir; }
@@ -1022,7 +1048,17 @@ class CamRig {
     c.fov = this.cur.fov;
     c.minZ = Math.max(.5, dist - 70); c.maxZ = dist + 90;
     c.position.set(this.target.x + hd * Math.sin(this.cur.yaw), this.target.y + dist * Math.sin(this.cur.pitch), this.target.z + hd * Math.cos(this.cur.yaw));
-    c.setTarget(this.target);
+    const S = this.shot;
+    if (S) {
+      S.t += dt; const sm = (v) => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
+      const w = sm(S.t / .22) * sm((S.dur - S.t) / .4); this.shotW = w;
+      const a = S.a + S.spin * S.t, D = S.D * (1 - .18 * S.t / S.dur);
+      const sx = S.x + Math.cos(a) * D, sy = S.y + 1.6 + D * .2, sz = S.z + Math.sin(a) * D;
+      const p = c.position; p.set(lerp(p.x, sx, w), lerp(p.y, sy, w), lerp(p.z, sz, w));
+      c.fov = lerp(c.fov, rad(40), w); c.minZ = w > .01 ? .3 : c.minZ;
+      c.setTarget(new B.Vector3(lerp(this.target.x, S.x, w), lerp(this.target.y, S.y, w), lerp(this.target.z, S.z, w)));
+      if (S.t >= S.dur) this.shot = null;
+    } else { this.shotW = 0; c.setTarget(this.target); }
   }
 }
 
@@ -1371,8 +1407,11 @@ class Guard {
   sleep() {
     this.sleepT = 0; this.state = 'asleep'; this.atk = null; this.hold = true; this.path = []; this.aw = 0; this.sees = false;
     this.spear.setEnabled(false); this.marker.setEnabled(false); this.coneMesh.setEnabled(false); this.armR.rotation.x = 0; this.legL.rotation.x = 0; this.legR.rotation.x = 0;
-    if (!this.stars) { this.stars = []; const sm = new B.StandardMaterial('stm', this.scene); sm.disableLighting = true; sm.emissiveColor = new B.Color3(1, .9, .3); sm.diffuseColor = B.Color3.Black();
-      for (let i = 0; i < 3; i++) { const m = B.MeshBuilder.CreateBox('star', { size: .28 }, this.scene); m.material = sm; m.isPickable = false; this.stars.push(m); } }
+    if (!this.stars) {
+      this.stars = []; const sm = new B.StandardMaterial('stm', this.scene); sm.disableLighting = true; sm.emissiveColor = new B.Color3(1, .88, .35); sm.diffuseColor = B.Color3.Black(); sm.backFaceCulling = false;
+      const P = [0, 0, 0], I = []; for (let k = 0; k < 10; k++) { const a = k * Math.PI / 5 + Math.PI / 2, r = k % 2 ? .22 : .5; P.push(Math.cos(a) * r, Math.sin(a) * r, 0); I.push(0, 1 + k, 1 + (k + 1) % 10); }
+      const vd = new B.VertexData(); vd.positions = P; vd.indices = I; vd.normals = P.map((_, i) => i % 3 === 2 ? 1 : 0);
+      for (let i = 0; i < 3; i++) { const m = new B.Mesh('star', this.scene); vd.applyToMesh(m); m.material = sm; m.isPickable = false; m.billboardMode = B.Mesh.BILLBOARDMODE_ALL; this.stars.push(m); } }
     for (const m of this.stars) m.setEnabled(true);
   }
 
@@ -1383,10 +1422,12 @@ class Guard {
     this.root.position.y = this.cell.top + .7 * e + Math.sin(Math.PI * Math.min(1, k * 1.4)) * .9;
     this.root.position.x = this.cell.x + .5; this.root.position.z = this.cell.z + .5;
     const f = this.face, hl = Math.hypot(f[0], f[1]) || 1;
+    const fade = Math.max(0, Math.min(1, (2.6 - this.sleepT) / .8)); // dizzy stars for ~2s, then only the Zzz stays
     for (let i = 0; i < this.stars.length; i++) {
-      const a = this.sleepT * 4 + i * 2.094;
-      this.stars[i].position.set(this.cell.x + .5 + f[0] / hl * 3.1 * e + Math.cos(a) * .8, this.cell.top + 1.1 + Math.sin(this.sleepT * 5 + i) * .12, this.cell.z + .5 + f[1] / hl * 3.1 * e + Math.sin(a) * .8);
-      this.stars[i].rotation.y = a;
+      const a = this.sleepT * 3.2 + i * 2.094, m = this.stars[i];
+      m.setEnabled(fade > 0);
+      m.position.set(this.cell.x + .5 + f[0] / hl * 3.1 * e + Math.cos(a) * .9, this.cell.top + 1.3 + Math.sin(this.sleepT * 4 + i * 2) * .15, this.cell.z + .5 + f[1] / hl * 3.1 * e + Math.sin(a) * .9);
+      m.scaling.setAll((.8 + .25 * Math.sin(this.sleepT * 9 + i * 2)) * fade);
     }
   }
 
@@ -1442,7 +1483,7 @@ function buildGuards(scene, L) {
   guards.push(new Guard(scene, L, light, outer.pts, { color: outer.color }));
   const mgr = {
     list: guards, light, hearts: 3, invuln: 0, lost: 0, events: [], rings: [],
-    timers: [], meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
+    timers: [], shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
     hitCheck(tx, tz, ty, snake) { return Math.hypot(snake.head.x - tx, snake.head.z - tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - ty) <= 3 && this.invuln <= 0; },
     damage(g) { if (this.invuln > 0 || this.hearts <= 0) return; this.hearts--; this.invuln = 1.4; this.events.push({ t: 'hit', hearts: this.hearts }); if (this.hearts <= 0) this.events.push({ t: 'lost' }); },
     shout(g) {
@@ -1458,16 +1499,17 @@ function buildGuards(scene, L) {
     tick(dt, snake) {
       this.slow = Math.max(0, this.slow - dt); this.dip = Math.max(0, this.dip - dt); this.escCd = Math.max(0, this.escCd - dt);
       if (this.dashT > 0) { this.dashT -= dt; if (this.dashT <= 0) snake.speedMul = 1; }
-      for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
+      for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt * this.snakeScale; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
+      this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .3 : 1;
       this.window = this._slipGuard(snake) !== null;
       this.bite = this._biteTarget(snake);
-      return this.dip > 0 ? .18 : this.slow > 0 ? .3 : 1;
+      return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .45 : 1;
     },
     addMeter(v) { this.meter = Math.min(1, this.meter + v); },
     _slipGuard(snake) {
       for (const g of guards) {
         const a = g.atk; if (!a || a.slipped || g.state === 'asleep') continue;
-        const open = a.kind === 'melee' ? (a.phase === 'wind' && a.t >= GCFG.windup - .3) : ((a.phase === 'wind' && a.t >= GCFG.windup - .1) || (a.phase === 'fly' && GCFG.flight - a.t <= .3));
+        const open = a.kind === 'melee' ? (a.phase === 'wind' && a.t >= GCFG.windup - .5) : ((a.phase === 'wind' && a.t >= GCFG.windup - .3) || (a.phase === 'fly' && GCFG.flight - a.t <= .45));
         if (open && Math.hypot(snake.head.x - a.tx, snake.head.z - a.tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - a.ty) <= 3) return g;
       }
       return null;
@@ -1484,34 +1526,58 @@ function buildGuards(scene, L) {
       }
       return best;
     },
+    startShot(snake, g) { // close-up slow-motion cinematic of a takedown
+      const gx = g.cell.x + .5, gz = g.cell.z + .5;
+      this.shotT = 1.5; this.dip = Math.max(this.dip, 1.5);
+      this.events.push({ t: 'shot', x: (snake.head.x + gx) / 2, y: g.cell.top + 1.7, z: (snake.head.z + gz) / 2, dx: gx - snake.head.x, dz: gz - snake.head.z });
+    },
+    // a walkable axis to roll along: wanted direction first, then sideways of the threat, then the other side
+    _rollDir(snake, g, want) {
+      const w = snake.world, c = snake.cell, ok = (d) => !snake.climb && w.surface(c.x + d[0], c.z + d[1], c.top) !== null;
+      const cand = [];
+      if (want) cand.push(want);
+      let tx = null, tz = null;
+      if (g) { tx = g.cell.x + .5 - snake.head.x; tz = g.cell.z + .5 - snake.head.z; }
+      else { let bd = 1e9; for (const o of guards) { if (o.state === 'asleep') continue; const dx = o.cell.x + .5 - snake.head.x, dz = o.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz); if (d < bd && d < 14) { bd = d; tx = dx; tz = dz; } } }
+      if (tx === null) { tx = Math.sin(snake.heading); tz = Math.cos(snake.heading); }
+      const px = -tz, pz = tx, ax = Math.abs(px) > Math.abs(pz) ? [Math.sign(px), 0] : [0, Math.sign(pz) || 1];
+      cand.push(ax, [-ax[0], -ax[1]], Math.abs(tx) > Math.abs(tz) ? [-Math.sign(tx), 0] : [0, -Math.sign(tz) || 1]);
+      for (const d of cand) if (ok(d)) return { d, moves: true };
+      return { d: cand[0], moves: false };
+    },
     // Attack: bite a guard who hasn't noticed the snake
     attack(snake) {
       if (snake.actv) return false;
       const g = this._biteTarget(snake);
-      if (!g) { // a lunge at thin air, so the button always responds
-        const h = snake.heading; snake.act('strike', Math.sin(h), Math.cos(h), 1.6); return false;
-      }
+      if (!g) { const h = snake.heading; snake.act('strike', Math.sin(h), Math.cos(h), 1.6); return false; } // a lunge at thin air, so the button always responds
       const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz);
-      snake.act('strike', dx, dz, Math.max(.8, d - .5)); this.invuln = Math.max(this.invuln, .9);
-      this.timers.push({ t: .13, fn: () => { if (g.state === 'asleep') return; g.sleep(); this.addMeter(.15); this.dip = Math.max(this.dip, .7); this.events.push({ t: 'bite' }); } });
+      snake.act('strike', dx, dz, Math.max(.8, d - .5)); this.invuln = Math.max(this.invuln, 1.5);
+      this.startShot(snake, g);
+      this.timers.push({ t: .13, fn: () => { if (g.state === 'asleep') return; g.sleep(); this.addMeter(.15); this.events.push({ t: 'bite' }); } });
       return true;
     },
-    // Escape: slip + counter in the last 0.3s before a hit, else spend a full meter on slow motion, else dash
+    // Escape: curl into a wheel and roll sideways. Timed right (just before a hit) it becomes a counter-attack.
     escape(snake) {
-      const g = this._slipGuard(snake);
+      if (snake.actv) return null;
+      const g = this._slipGuard(snake), want = snake.wish ? [snake.wish[0], snake.wish[1]] : null;
       if (g) {
-        const a = g.atk; a.slipped = true; this.invuln = Math.max(this.invuln, 1.2);
-        const gx = g.cell.x + .5 - snake.head.x, gz = g.cell.z + .5 - snake.head.z, gd = Math.hypot(gx, gz) || 1;
-        snake.act('dodge', gx, gz); this.events.push({ t: 'dodge' });   // weave away from the hit, then strike back
+        const a = g.atk; a.slipped = true; this.invuln = Math.max(this.invuln, 2);
+        const r = this._rollDir(snake, g, null);
+        snake.act('roll', r.d[0], r.d[1], 0, r.moves ? 1 : 0); this.events.push({ t: 'dodge' });
         if (a.kind === 'melee') {
-          this.timers.push({ t: .3, fn: () => { snake.act('strike', gx, gz, Math.max(.8, gd - .5)); } });
-          this.timers.push({ t: .43, fn: () => { g.sleep(); this.addMeter(.35); this.dip = Math.max(this.dip, .8); this.events.push({ t: 'counter' }); } });
+          this.timers.push({ t: .5, fn: () => {
+            if (g.state === 'asleep') return;
+            const gx = g.cell.x + .5 - snake.head.x, gz = g.cell.z + .5 - snake.head.z, gd = Math.hypot(gx, gz) || 1;
+            snake.act('strike', gx, gz, Math.min(3, Math.max(.8, gd - .5))); this.startShot(snake, g);
+            this.timers.push({ t: .13, fn: () => { g.sleep(); this.addMeter(.35); this.events.push({ t: 'counter' }); } });
+          } });
         } else { g.cd += 1.2; this.addMeter(.2); }
         return 'counter';
       }
-      if (this.meter >= 1 && this.slow <= 0) { this.slow = 3; this.meter = 0; this.events.push({ t: 'slow' }); return 'slow'; }
-      if (this.escCd <= 0) { this.escCd = 1.5; this.dashT = .5; snake.speedMul = 1.9; return 'dash'; }
-      return null;
+      const r = this._rollDir(snake, null, want); let res = 'roll';
+      if (this.meter >= 1 && this.slow <= 0) { this.slow = 3; this.meter = 0; this.events.push({ t: 'slow' }); res = 'slow'; }
+      snake.act('roll', r.d[0], r.d[1], 0, r.moves ? 2 : 0); this.invuln = Math.max(this.invuln, .7);
+      return res;
     },
     update(dt, time, snake) {
       this.invuln = Math.max(0, this.invuln - dt);
@@ -1519,7 +1585,7 @@ function buildGuards(scene, L) {
       for (const g of guards) g.update(dt, time, snake, this);
       for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t += dt; const k = r.t / .9; r.m.scaling.set(1 + k * 14, 1 + k * 14, 1 + k * 14); r.m.rotation.x = Math.PI / 2; r.m.material.alpha = Math.max(0, .9 * (1 - k)); if (k >= 1) { r.m.dispose(); this.rings.splice(i, 1); } }
     },
-    reset() { this.hearts = 3; this.invuln = 0; this.meter = 0; this.slow = 0; this.dip = 0; this.escCd = 0; this.dashT = 0; this.timers = []; for (const g of guards) g.reset(); },
+    reset() { this.hearts = 3; this.invuln = 0; this.meter = 0; this.slow = 0; this.dip = 0; this.escCd = 0; this.dashT = 0; this.timers = []; this.shotT = 0; this.snakeScale = 1; for (const g of guards) g.reset(); },
   };
   return mgr;
 }
@@ -1577,7 +1643,7 @@ function buildGuards(scene, L) {
   // ---- snake + camera ----
   const snake = new Snake(scene, level.world, level.spawnCells, level.spawnTop, bevel);
   const guards = buildGuards(scene, level);
-  const rig = new CamRig(scene, engine, { W: level.W, D: level.D });
+  const rig = new CamRig(scene, engine, { W: level.W, D: level.D }); rig.world = level.world;
   rig.setPreset(1);
 
   scene.materials.forEach(m => { if (m.maxSimultaneousLights !== undefined) m.maxSimultaneousLights = 8; });
@@ -1701,13 +1767,15 @@ function buildGuards(scene, L) {
   hud.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:6;overflow:hidden';
   hud.innerHTML = '<div id="hearts" style="position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;font-size:30px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.5)"></div>' +
     '<div id="flash" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,0) 40%,rgba(255,80,60,.55));opacity:0;transition:opacity .35s"></div>' +
+    '<div id="barT" style="position:absolute;left:0;right:0;top:0;height:0;background:#000"></div><div id="barB" style="position:absolute;left:0;right:0;bottom:0;height:0;background:#000"></div>' +
+    '<style>@keyframes zz{0%{transform:translate(0,6px) scale(.45) rotate(-8deg);opacity:0}18%{opacity:1}100%{transform:translate(26px,-40px) scale(1.2) rotate(10deg);opacity:0}}.zz{position:relative;width:46px;height:34px;margin:0 auto}.zz i{position:absolute;left:4px;bottom:0;font:italic 900 22px "Trebuchet MS",system-ui;color:#eef5ff;-webkit-text-stroke:1.5px #4a78c8;paint-order:stroke fill;text-shadow:0 0 8px rgba(120,170,255,.9),0 2px 3px rgba(0,0,0,.4);opacity:0;animation:zz 2.1s ease-out infinite}.zz i:nth-child(2){animation-delay:.7s;font-size:17px}.zz i:nth-child(3){animation-delay:1.4s;font-size:13px}</style>' +
     '<div id="slowfx" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(120,180,255,0) 35%,rgba(90,150,255,.45));opacity:0;transition:opacity .3s"></div>' +
     '<div id="combat" style="position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:14px;pointer-events:none">' +
     '<button id="btnA" style="pointer-events:auto;touch-action:none;width:88px;height:88px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:#c8452b;color:#fff;font:800 15px system-ui;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.4);opacity:.45;transition:opacity .15s,transform .1s">BITE</button>' +
     '<div id="escWrap" style="position:relative;width:80px;height:80px;border-radius:50%;padding:5px;background:conic-gradient(#7fd0ff 0deg,rgba(255,255,255,.2) 0deg)"><button id="btnE" style="pointer-events:auto;touch-action:none;width:100%;height:100%;border-radius:50%;border:2px solid rgba(255,255,255,.6);background:#2c5fa8;color:#fff;font:800 13px system-ui;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.4)">ESCAPE</button></div></div>' +
     '<div id="banner" style="position:absolute;left:0;right:0;top:34%;text-align:center;font:800 clamp(26px,7vw,48px) system-ui;letter-spacing:.08em;color:#fff;text-shadow:0 3px 14px rgba(0,0,0,.6);opacity:0;transition:opacity .4s"></div>';
   document.body.appendChild(hud);
-  const slowEl = hud.querySelector('#slowfx'), btnA = hud.querySelector('#btnA'), btnE = hud.querySelector('#btnE'), escWrap = hud.querySelector('#escWrap'), heartsEl = hud.querySelector('#hearts'), flashEl = hud.querySelector('#flash'), bannerEl = hud.querySelector('#banner');
+  const barT = hud.querySelector('#barT'), barB = hud.querySelector('#barB'), slowEl = hud.querySelector('#slowfx'), btnA = hud.querySelector('#btnA'), btnE = hud.querySelector('#btnE'), escWrap = hud.querySelector('#escWrap'), heartsEl = hud.querySelector('#hearts'), flashEl = hud.querySelector('#flash'), bannerEl = hud.querySelector('#banner');
   function drawHearts(n, shake) {
     heartsEl.innerHTML = [0, 1, 2].map(i => `<span style="color:${i < n ? '#f4c542' : 'rgba(255,255,255,.25)'};${shake && i === n ? 'transform:scale(1.4)' : ''}">&#9829;</span>`).join('');
   }
@@ -1727,25 +1795,26 @@ function buildGuards(scene, L) {
       if (e.t === 'hit') { drawHearts(e.hearts, true); flashEl.style.opacity = 1; setTimeout(() => flashEl.style.opacity = 0, 160); hitBlink = 1.2; }
       if (e.t === 'lost') { showBanner('LOST A LIFE', 2.2); restartT = 2.2; }
       if (e.t === 'shout') showBanner('GUARDS ALERTED!', .9);
-      if (e.t === 'counter') showBanner('COUNTER!', .9);
-      if (e.t === 'dodge') showBanner('DODGED!', .7);
-      if (e.t === 'bite') showBanner('ASLEEP', .7);
+      if (e.t === 'counter') showBanner('COUNTER!', 1.1);
+      if (e.t === 'dodge') showBanner('DODGE!', .6);
+      if (e.t === 'shot') rig.startShot(e.x, e.y, e.z, e.dx, e.dz, 1.5);
     }
     if (restartT > 0) { restartT -= dt; if (restartT <= 0) resetStage(); }
     if (bannerT > 0) { bannerT -= dt; if (bannerT <= 0) bannerEl.style.opacity = 0; }
     if (hitBlink > 0) { hitBlink -= dt; const vis = Math.floor(hitBlink * 12) % 2 === 0 || hitBlink <= 0; for (const m of snake.meshes) m.isVisible = vis; if (hitBlink <= 0) for (const m of snake.meshes) m.isVisible = true; }
     slowEl.style.opacity = guards.slow > 0 ? 1 : 0;
-    btnA.style.opacity = guards.bite ? 1 : .45; btnA.style.boxShadow = guards.bite ? '0 0 22px 6px rgba(255,200,80,.8)' : '0 4px 14px rgba(0,0,0,.4)';
+    barT.style.height = barB.style.height = (rig.shotW * 11).toFixed(2) + '%';
+    btnA.style.opacity = 1; btnA.style.boxShadow = guards.bite ? '0 0 22px 6px rgba(255,200,80,.8)' : '0 4px 14px rgba(0,0,0,.4)';
     { const full = guards.meter >= 1, deg = (guards.slow > 0 ? guards.slow / 3 : guards.meter) * 360;
       escWrap.style.background = `conic-gradient(${full || guards.slow > 0 ? '#ffe27a' : '#7fd0ff'} ${deg}deg, rgba(255,255,255,.2) ${deg}deg)`;
       btnE.style.background = guards.window ? '#e23b3b' : '#2c5fa8'; btnE.style.boxShadow = guards.window ? '0 0 26px 8px rgba(255,80,60,.9)' : full ? '0 0 20px 5px rgba(255,226,122,.8)' : '0 4px 14px rgba(0,0,0,.4)';
-      btnE.style.opacity = guards.escCd > 0 && !guards.window ? .6 : 1; }
+      btnE.style.opacity = 1; }
     guards.list.forEach((g, i) => {
       const b = badges[i], show = g.state === 'asleep' || g.aw > .03 || g.state === 'alert' || g.state === 'search';
       if (!show) { b.style.display = 'none'; return; }
       const p = proj(g.pos.x, g.pos.y + 3.9, g.pos.z); if (p[2] > 1 || p[2] < 0) { b.style.display = 'none'; return; }
       b.style.display = 'block'; b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
-      b.querySelector('.ic').innerHTML = g.state === 'asleep' ? '<span style="font-size:20px;color:#cfe8ff">Zzz</span>' : g.state === 'alert' ? '<span style="color:#ff4b3a">!</span>' : g.state === 'search' || g.state === 'susp' ? '<span style="color:#ffc83d">?</span>' : '';
+      const ik = g.state === 'asleep' ? 'z' : g.state === 'alert' ? 'a' : g.state === 'search' || g.state === 'susp' ? 'q' : ''; if (b._k !== ik) { b._k = ik; b.querySelector('.ic').innerHTML = { z: '<div class="zz"><i>Z</i><i>z</i><i>z</i></div>', a: '<span style="color:#ff4b3a">!</span>', q: '<span style="color:#ffc83d">?</span>', '': '' }[ik]; }
       const mt = b.querySelector('.mt'); b.lastChild.style.display = g.state === 'asleep' ? 'none' : 'block'; mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
     });
   }
@@ -1757,10 +1826,10 @@ function buildGuards(scene, L) {
     time += dt;
     const v = inputVec();
     snake.wish = v ? rig.worldDir(v[0], v[1]) : null;
-    snake.update(dt, time);
+    const ts = guards.tick(dt, snake);
+    snake.update(dt * guards.snakeScale, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);
     props.update(time);
-    const ts = guards.tick(dt, snake);
     if (restartT <= 0) guards.update(dt * ts, time, snake); hudUpdate(dt);
     { const h = snake.head, q = snake.seg[2].position; if (occ.p) { occ.p.a.set(h.x, h.y + .4, h.z, 1.35); occ.p.b.set(q.x, q.y, q.z, 1.35); } }
     scene.render();

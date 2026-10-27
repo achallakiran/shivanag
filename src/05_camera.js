@@ -14,7 +14,21 @@ class CamRig {
     scene.activeCamera = this.cam;
     this.preset = 1; this.yawStep = 0; this.zoom = 1;
     this.cur = null; this.target = new B.Vector3(bounds.W / 2, 2, bounds.D / 2);
-    this.first = true;
+    this.first = true; this.shot = null; this.shotW = 0; this.world = null;
+  }
+
+  // close-up slow-motion shot: a low, tight orbit around (x,y,z), from the first of several angles with a clear view
+  startShot(x, y, z, dx, dz, dur) {
+    const base = Math.atan2(dz, dx), b = this.bounds; let pick = null;
+    const angs = [base + Math.PI / 2, base - Math.PI / 2, base + Math.PI * .8, base - Math.PI * .8, base + Math.PI * .3, base - Math.PI * .3];
+    for (const D of [6.5, 5.2, 4.2]) for (const a of angs) {
+      const px = x + Math.cos(a) * D, pz = z + Math.sin(a) * D, py = y + 1.6 + D * .2;
+      if (px < 1 || pz < 1 || px > b.W - 1 || pz > b.D - 1) continue;
+      if (this.world && [[0, 0], [1.4, 0], [-1.4, 0]].some(o => sightBlocked(this.world, px, py, pz, x + Math.cos(base) * o[0], y - (o[0] ? 1 : 0), z + Math.sin(base) * o[0]))) continue; // snake and guard both in clear view
+      pick = { a, D }; break;
+    }
+    if (!pick) pick = { a: base + Math.PI / 2, D: 3.2 };
+    this.shot = { t: 0, dur: dur || 1.5, x, y, z, a: pick.a, D: pick.D, spin: (Math.random() < .5 ? -1 : 1) * .28 };
   }
   setPreset(i) { this.preset = ((i % PRESETS.length) + PRESETS.length) % PRESETS.length; }
   rotate(dir) { this.yawStep += dir; }
@@ -56,6 +70,16 @@ class CamRig {
     c.fov = this.cur.fov;
     c.minZ = Math.max(.5, dist - 70); c.maxZ = dist + 90;
     c.position.set(this.target.x + hd * Math.sin(this.cur.yaw), this.target.y + dist * Math.sin(this.cur.pitch), this.target.z + hd * Math.cos(this.cur.yaw));
-    c.setTarget(this.target);
+    const S = this.shot;
+    if (S) {
+      S.t += dt; const sm = (v) => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
+      const w = sm(S.t / .22) * sm((S.dur - S.t) / .4); this.shotW = w;
+      const a = S.a + S.spin * S.t, D = S.D * (1 - .18 * S.t / S.dur);
+      const sx = S.x + Math.cos(a) * D, sy = S.y + 1.6 + D * .2, sz = S.z + Math.sin(a) * D;
+      const p = c.position; p.set(lerp(p.x, sx, w), lerp(p.y, sy, w), lerp(p.z, sz, w));
+      c.fov = lerp(c.fov, rad(40), w); c.minZ = w > .01 ? .3 : c.minZ;
+      c.setTarget(new B.Vector3(lerp(this.target.x, S.x, w), lerp(this.target.y, S.y, w), lerp(this.target.z, S.z, w)));
+      if (S.t >= S.dur) this.shot = null;
+    } else { this.shotW = 0; c.setTarget(this.target); }
   }
 }

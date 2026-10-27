@@ -186,9 +186,10 @@ class Snake {
   get moving() { return this.t < 1; }
 
   // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
-  act(type, dx, dz, reach) {
+  act(type, dx, dz, reach, steps) {
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
-    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : .38, dx, dz, reach: reach || 2, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    this.actv = { type, t: 0, dur: type === 'strike' ? .42 : type === 'roll' ? .5 : .38, dx, dz, reach: reach || 2, steps: steps || 0, side: Math.abs(dx) >= Math.abs(dz) ? (dz >= 0 ? 1 : -1) : (dx >= 0 ? -1 : 1) };
+    if (type === 'roll') this.actv.hd = this.heading;
     if (type === 'strike') { this.targetHeading = Math.atan2(dx, dz); this.heading = this.targetHeading; }
     this.idle = 0;
   }
@@ -200,6 +201,10 @@ class Snake {
         const need = (1 - this.t) * this.dur, use = Math.min(rem, need);
         this.t += use / this.dur; rem -= use;
         if (this.t >= 0.9999) this.t = 1; else break;
+      }
+      if (this.actv && this.actv.type === 'roll' && this.actv.steps > 0) { // the roll really carries the snake sideways
+        this.actv.steps--; this.speedMul = 1.7; const ok = this.tryStep([Math.round(this.actv.dx), Math.round(this.actv.dz)]); this.speedMul = 1;
+        if (ok && this.t === 0) continue; this.actv.steps = 0;
       }
       if (this.wish && !this.actv) { this.tryStep(this.wish); if (this.t === 0) continue; }
       break;
@@ -244,7 +249,13 @@ class Snake {
       const kk = Math.min(1, Math.max(0, k - sd * .06)), v = Math.sin(Math.PI * kk) * 1.35 * Math.max(.35, 1 - sd * .12);
       return [-A.dz * A.side * v, .12 * Math.sin(Math.PI * kk), A.dx * A.side * v];
     };
+    const RO = A && A.type === 'roll' ? (() => { // curl into a wheel and roll sideways
+      const k = A.t / A.dur, c = k < .22 ? Math.pow(k / .22, 2) * (3 - 2 * k / .22) : k > .78 ? Math.pow((1 - k) / .22, 2) * (3 - 2 * (1 - k) / .22) : 1;
+      return { c, th: k * Math.PI * 2.3 * (A.side || 1), dx: A.dx, dz: A.dz, R: .78 };
+    })() : null;
+    const ring = (a, r) => [this.head.x + RO.dx * RO.R * Math.sin(a), this.head.y + r + RO.R * (1 + Math.cos(a)) * .92, this.head.z + RO.dz * RO.R * Math.sin(a)];
     if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
+    if (RO) { const q = ring(RO.th, .3); ox = (q[0] - this.head.x) * RO.c; oz = (q[2] - this.head.z) * RO.c; oy = (q[1] - this.head.y - .36 - lift) * RO.c; roll = RO.c * RO.th * .9; hoodK = RO.c * .3; }
     this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
     this.headNode.rotation.y = this.heading;
     this.headNode.rotation.z = roll;
@@ -278,6 +289,7 @@ class Snake {
       const r = sg.s / 2;
       const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
       const o = off(s); x += o[0]; z += o[2]; y += o[1];
+      if (RO) { const q = ring(RO.th - (i + 1) * .8, sg.s / 2), cc = RO.c; x = lerp(x, q[0], cc); z = lerp(z, q[2], cc); y = lerp(y + sg.s / 2, q[1], cc) - sg.s / 2; }
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
