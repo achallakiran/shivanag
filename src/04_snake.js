@@ -185,6 +185,14 @@ class Snake {
 
   get moving() { return this.t < 1; }
 
+  // leap from a perch down onto the ground cell (x,z,top)
+  dropTo(x, z, top) {
+    this.climb = null; this.t = 1; this.wish = null;
+    this.actv = { type: 'drop', t: 0, dur: .66, dx: 0, dz: 0, reach: 0, steps: 0, side: 1 };
+    this._go(this._gp(x, z, top), { x, z, top }, .5); this.dur = .5;
+    const dx = x + .5 - this.path[1].x, dz = z + .5 - this.path[1].z; if (Math.hypot(dx, dz) > .2) { this.targetHeading = Math.atan2(dx, dz); }
+  }
+
   // short scripted moves: 'strike' (lunge bite toward dx,dz) and 'dodge' (weave sideways away from an incoming hit)
   act(type, dx, dz, reach, steps) {
     const l = Math.hypot(dx, dz) || 1; dx /= l; dz /= l;
@@ -206,7 +214,8 @@ class Snake {
         this.actv.steps--; this.speedMul = 1.7; const ok = this.tryStep([Math.round(this.actv.dx), Math.round(this.actv.dz)]); this.speedMul = 1;
         if (ok && this.t === 0) continue; this.actv.steps = 0;
       }
-      if (this.wish && !this.actv) { this.tryStep(this.wish); if (this.t === 0) continue; }
+      const wi = this.wishFn ? this.wishFn() : this.wish; // re-read the input before EVERY step, so held keys stay right as the wall turns
+      if (wi && !this.actv) { this.tryStep(wi); if (this.t === 0) continue; }
       break;
     }
     if (this.climb) this.targetHeading = Math.atan2(this.climb.fx, this.climb.fz);
@@ -242,6 +251,7 @@ class Snake {
     const off = (sd) => { // visual offset for a body point at distance sd behind the head
       if (!A) return [0, 0, 0];
       const k = A.t / A.dur;
+      if (A.type === 'drop') { const dk = Math.min(1, k / .76); return [0, Math.sin(Math.PI * dk) * 1.1 * Math.max(0, 1 - sd / 3), 0]; }
       if (A.type === 'strike') {
         const c = k < .3 ? 1 - Math.pow(1 - k / .3, 3) : 1 - Math.pow((k - .3) / .7, 2) * (3 - 2 * (k - .3) / .7); // fast out, eased back
         const w = Math.pow(Math.max(0, 1 - sd / 3.4), 1.6) * c * A.reach; return [A.dx * w, .28 * c * Math.max(0, 1 - sd / 2.4), A.dz * w];
@@ -262,11 +272,11 @@ class Snake {
     this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift + apitch;
     // impact flash / whoosh puff
     if (A) {
-      const k = A.t / A.dur, on = A.type === 'strike' ? (k > .22 && k < .62) : (k < .7);
+      const k = A.t / A.dur, on = A.type === 'strike' ? (k > .22 && k < .62) : A.type === 'drop' ? k > .74 : (k < .7);
       this.fx.setEnabled(on);
       if (on) {
-        const f = A.type === 'strike' ? (k - .22) / .4 : k / .7;
-        this.fx.position.set(this.head.x + (A.type === 'strike' ? ox + A.dx * .7 : 0), this.head.y + .6 + (A.type === 'strike' ? oy : 0), this.head.z + (A.type === 'strike' ? oz + A.dz * .7 : 0));
+        const f = A.type === 'strike' ? (k - .22) / .4 : A.type === 'drop' ? (k - .74) / .26 : k / .7;
+        this.fx.position.set(this.head.x + (A.type === 'strike' ? ox + A.dx * .7 : 0), this.head.y + .6 + (A.type === 'strike' ? oy : 0), this.head.z + (A.type === 'strike' ? oz + A.dz * .7 : 0)); if (A.type === 'drop') this.fx.position.set(this.head.x, this.head.y + .5, this.head.z);
         const sc = A.type === 'strike' ? .5 + f * 1.3 : .8 + f * 1.8; this.fx.scaling.setAll(sc);
         this.fxMat.alpha = (1 - f) * .85; this.fxMat.emissiveColor = A.type === 'strike' ? new B.Color3(1, .9, .4) : new B.Color3(.5, .85, 1);
       }

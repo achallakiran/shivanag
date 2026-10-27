@@ -401,10 +401,25 @@ function buildGuards(scene, L) {
       const far = R.filter(c => c[2] >= 6 && c[2] <= 26 && Math.hypot(c[0] - sp.x, c[1] - sp.z) > 14); if (far.length < 6) continue;
       const pts = [[sx, sz]]; for (let k = 0; k < 2 + Math.floor(rnd() * 2); k++) { const c = far[Math.floor(rnd() * far.length)]; pts.push([c[0], c[1]]); }
       guards.push(new Guard(scene, L, light, pts, { color: palette[made % palette.length] })); taken.push([sx, sz]); made++;
+    }
+    // ambush patrols: guards whose route walks right under a tree limb, so the Drop can be used
+    const wd = L.world, limbs = []; for (let x = 1; x < W - 1; x++) for (let z = 1; z < D - 1; z++) { for (let y = 4; y < 22; y++) if (wd.get(x, y, z) === M.BRANCH) { if (g0._walkable(x, z, 2)) limbs.push([x, z]); break; } }
+    L.limbCells = limbs;
+    const used = []; let amb = 0;
+    for (let tries = 0; tries < 200 && amb < 4 && limbs.length; tries++) {
+      const A = limbs[Math.floor(rnd() * limbs.length)];
+      if (Math.hypot(A[0] - sp.x, A[1] - sp.z) < 12 || used.some(u => Math.hypot(u[0] - A[0], u[1] - A[1]) < 14)) continue;
+      const R = reach(A[0], A[1]).filter(c => c[2] >= 5 && c[2] <= 11); if (R.length < 6) continue;
+      const E1 = R[Math.floor(rnd() * R.length)], E2 = R[Math.floor(rnd() * R.length)];
+      guards.push(new Guard(scene, L, light, [[E1[0], E1[1]], [A[0], A[1]], [E2[0], E2[1]], [A[0], A[1]]], { color: 0x2f7a4f })); used.push(A); amb++;
     } }
+  // faint rings on the ground under every limb: they brighten when a guard stands in the drop cell
+  const dm = new B.StandardMaterial('dropdim', scene), db = new B.StandardMaterial('dropbright', scene);
+  for (const [m, a] of [[dm, .22], [db, .9]]) { m.disableLighting = true; m.emissiveColor = new B.Color3(1, .8, .3); m.diffuseColor = B.Color3.Black(); m.alpha = a; m.disableDepthWrite = true; }
+  const marks = (L.limbCells || []).map(c => { const d = B.MeshBuilder.CreateTorus('dropring', { diameter: 1.1, thickness: .09, tessellation: 24 }, scene); d.position.set(c[0] + .5, 2.06, c[1] + .5); d.material = dm; d.isPickable = false; return { m: d, x: c[0] + .5, z: c[1] + .5, on: false }; });
   const mgr = {
     list: guards, light, hearts: 3, invuln: 0, lost: 0, events: [], rings: [],
-    timers: [], windowG: null, shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
+    timers: [], windowG: null, drop: null, shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
     hitCheck(tx, tz, ty, snake) { return Math.hypot(snake.head.x - tx, snake.head.z - tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - ty) <= 3 && this.invuln <= 0; },
     damage(g) { if (this.invuln > 0 || this.hearts <= 0) return; this.hearts--; this.invuln = 1.4; this.events.push({ t: 'hit', hearts: this.hearts }); if (this.hearts <= 0) this.events.push({ t: 'lost' }); },
     shout(g) {
@@ -423,7 +438,7 @@ function buildGuards(scene, L) {
       for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt * this.snakeScale; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
       this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .3 : 1;
       this.windowG = this._slipGuard(snake); this.window = this.windowG !== null;
-      this.bite = this._biteTarget(snake);
+      this.drop = this._dropTarget(snake); this.bite = this.drop || this._biteTarget(snake);
       return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .75 : 1;
     },
     addMeter(v) { this.meter = Math.min(1, this.meter + v); },
@@ -434,6 +449,18 @@ function buildGuards(scene, L) {
         if (open && Math.hypot(snake.head.x - a.tx, snake.head.z - a.tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - a.ty) <= 3) return g;
       }
       return null;
+    },
+    // a guard standing right under the snake (perched on a limb, clinging high up, or on a pillar cap)
+    _dropTarget(snake) {
+      let best = null, bd = 1e9; const w = snake.world;
+      for (const g of guards) {
+        if (g.state === 'asleep') continue;
+        const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, dh = Math.hypot(dx, dz), up = snake.head.y - g.cell.top;
+        if (dh > 1.7 || up < 2 || up > 18) continue;
+        let clear = true; for (let y = g.cell.top + 3; y < Math.floor(snake.head.y) - 1; y++) { const m = w.get(g.cell.x, y, g.cell.z); if (m !== 0 && m !== M.LEAF && m !== M.LEAF2 && m !== M.BRANCH && m !== M.POLE) { clear = false; break; } }
+        if (clear && dh < bd) { bd = dh; best = g; }
+      }
+      return best;
     },
     // auto-aim: the nearest guard within reach that the snake can see (any facing, asleep ones excluded); unaware guards win ties
     _biteTarget(snake) {
@@ -451,7 +478,7 @@ function buildGuards(scene, L) {
     startShot(snake, g) { // close-up slow-motion cinematic of a takedown
       const gx = g.cell.x + .5, gz = g.cell.z + .5;
       this.shotT = 1.5; this.dip = Math.max(this.dip, 1.5);
-      this.events.push({ t: 'shot', x: (snake.head.x + gx) / 2, y: g.cell.top + 1.7, z: (snake.head.z + gz) / 2, dx: gx - snake.head.x, dz: gz - snake.head.z });
+      this.events.push({ t: 'shot', x: (snake.head.x + gx) / 2, y: g.cell.top + 1.7 + Math.min(4, Math.max(0, snake.head.y - g.cell.top - 3) * .35), z: (snake.head.z + gz) / 2, dx: gx - snake.head.x, dz: gz - snake.head.z });
     },
     // the roll always goes to the snake's SIDE (left or right of where it faces): away from the threat when there is one
     _rollDir(snake, g, want) {
@@ -471,6 +498,12 @@ function buildGuards(scene, L) {
     // Attack: bite a guard who hasn't noticed the snake
     attack(snake) {
       if (snake.actv) return false;
+      const dg = this._dropTarget(snake);
+      if (dg) { // DROP: leap from the branch onto the guard below
+        snake.dropTo(dg.cell.x, dg.cell.z, dg.cell.top); this.invuln = Math.max(this.invuln, 1.5); this.startShot(snake, dg);
+        this.timers.push({ t: .5, fn: () => { if (dg.state === 'asleep') return; dg.sleep(); this.addMeter(.2); this.events.push({ t: 'bite' }); } });
+        return true;
+      }
       const g = this._biteTarget(snake);
       if (!g) { const h = snake.heading; snake.act('strike', Math.sin(h), Math.cos(h), 1.6); return false; } // a lunge at thin air, so the button always responds
       const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz);
@@ -504,6 +537,7 @@ function buildGuards(scene, L) {
     },
     update(dt, time, snake) {
       this.invuln = Math.max(0, this.invuln - dt);
+      for (const k of marks) { const on = guards.some(g => g.state !== 'asleep' && Math.hypot(g.pos.x - k.x, g.pos.z - k.z) < .9); if (on !== k.on) { k.on = on; k.m.material = on ? db : dm; } }
       if (this.slow <= 0 && guards.some(g => g.state === 'alert' || g.state === 'search') && !guards.some(g => g.sees)) this.addMeter(.03 * dt);
       for (const g of guards) g.update(dt, time, snake, this);
       for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t += dt; const k = r.t / .9; r.m.scaling.set(1 + k * 14, 1 + k * 14, 1 + k * 14); r.m.rotation.x = Math.PI / 2; r.m.material.alpha = Math.max(0, .9 * (1 - k)); if (k >= 1) { r.m.dispose(); this.rings.splice(i, 1); } }

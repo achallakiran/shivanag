@@ -163,6 +163,21 @@
   const endJoy = (e) => { if (joy && e.pointerId === joy.id) { joy = null; joyEl.style.display = 'none'; } };
   canvas.addEventListener('pointerup', endJoy); canvas.addEventListener('pointercancel', endJoy);
 
+  // while clinging to a wall or trunk the controls follow the SCREEN: up climbs, down descends, left/right go round the wall
+  let spinFor = 0, spinSense = 0;
+  function wishFor(v) {
+    if (!snake.climb) { spinFor = 0; return rig.worldDir(v[0], v[1]); }
+    const fx = snake.climb.fx, fz = snake.climb.fz;
+    if (Math.abs(v[1]) >= Math.abs(v[0])) { spinFor = 0; return v[1] > 0 ? [fx, fz] : [-fx, -fz]; }
+    // left/right: pick the rotational sense once, when the key goes down, from the screen direction; then keep circling that way
+    if (spinFor !== v[0] || !spinSense) {
+      const p1 = [-fz, fx], sr = rig.worldDir(1, 0), su = rig.worldDir(0, 1);
+      let d = p1[0] * sr[0] + p1[1] * sr[1]; if (d === 0) d = p1[0] * su[0] + p1[1] * su[1];
+      spinSense = (d > 0 ? 1 : -1) * (v[0] > 0 ? 1 : -1); spinFor = v[0];
+    }
+    return spinSense > 0 ? [-fz, fx] : [fz, -fx];
+  }
+
   function inputVec() {
     if (held.length) return KEYS[held[held.length - 1]];
     if (joy && (joy.ux || joy.uy)) return [joy.ux, joy.uy];
@@ -212,7 +227,7 @@
     if (hitBlink > 0) { hitBlink -= dt; const vis = Math.floor(hitBlink * 12) % 2 === 0 || hitBlink <= 0; for (const m of snake.meshes) m.isVisible = vis; if (hitBlink <= 0) for (const m of snake.meshes) m.isVisible = true; }
     slowEl.style.opacity = guards.slow > 0 ? 1 : 0;
     barT.style.height = barB.style.height = (rig.shotW * 11).toFixed(2) + '%';
-    btnA.style.opacity = 1; btnA.style.boxShadow = guards.bite ? '0 0 22px 6px rgba(255,200,80,.8)' : '0 4px 14px rgba(0,0,0,.4)';
+    btnA.textContent = guards.drop ? 'DROP' : 'BITE'; btnA.style.opacity = 1; btnA.style.boxShadow = guards.bite ? '0 0 22px 6px rgba(255,200,80,.8)' : '0 4px 14px rgba(0,0,0,.4)';
     { const full = guards.meter >= 1, deg = (guards.slow > 0 ? guards.slow / 3 : guards.meter) * 360;
       escWrap.style.background = `conic-gradient(${full || guards.slow > 0 ? '#ffe27a' : '#7fd0ff'} ${deg}deg, rgba(255,255,255,.2) ${deg}deg)`;
       btnE.style.background = guards.window ? '#e23b3b' : '#2c5fa8'; btnE.style.boxShadow = guards.window ? '0 0 26px 8px rgba(255,80,60,.9)' : full ? '0 0 20px 5px rgba(255,226,122,.8)' : '0 4px 14px rgba(0,0,0,.4)';
@@ -232,8 +247,9 @@
   engine.runRenderLoop(() => {
     const dt = Math.min(.05, engine.getDeltaTime() / 1000);
     time += dt;
-    const v = inputVec();
-    snake.wish = v && restartT <= 0 ? rig.worldDir(v[0], v[1]) : null;
+    const v = inputVec(); if (!v) spinFor = 0;
+    snake.wish = v && restartT <= 0 ? wishFor(v) : null;
+    snake.wishFn = () => { const u = inputVec(); return u && restartT <= 0 ? wishFor(u) : null; };
     const ts = guards.tick(dt, snake);
     snake.update(dt * guards.snakeScale, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);
@@ -258,6 +274,6 @@
   // title card
   setTimeout(() => { if (!window.__failed) $('title').classList.add('gone'); }, 3200);
   $('title').addEventListener('click', () => $('title').classList.add('gone'));
-  window.__game = { resetStage, guards, occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
+  window.__game = { wishFor, resetStage, guards, occ, scene, engine, snake, rig, level, applyQuality, setCam, state, meshes, props, post };
   window.__ready = true;
 } catch (err) { window.__showErr && window.__showErr((err && err.message) || String(err)); console.error(err); } })();
