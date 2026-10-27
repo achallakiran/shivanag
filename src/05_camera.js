@@ -12,7 +12,7 @@ class CamRig {
     this.cam = new B.FreeCamera('cam', new B.Vector3(0, 20, -20), scene);
     this.cam.minZ = 1; this.cam.maxZ = 400; this.cam.inertia = 0;
     scene.activeCamera = this.cam;
-    this.preset = 1; this.yawStep = 0; this.zoom = 1;
+    this.preset = 1; this.yawStep = 0; this.zoom = 1; this.followK = 0;   // followK: quarter turns added while the snake clings to a wall
     this.cur = null; this.target = new B.Vector3(bounds.W / 2, 2, bounds.D / 2);
     this.first = true; this.shot = null; this.shotW = 0; this.world = null;
   }
@@ -32,7 +32,15 @@ class CamRig {
   }
   setPreset(i) { this.preset = ((i % PRESETS.length) + PRESETS.length) % PRESETS.length; }
   rotate(dir) { this.yawStep += dir; }
-  get yawLogical() { return rad(PRESETS[this.preset].yaw) + this.yawStep * Math.PI / 2; }
+  get yawLogical() { return rad(PRESETS[this.preset].yaw) + (this.yawStep + this.followK) * Math.PI / 2; }
+
+  // the follow turn (in quarter turns, nearest to the current one) that makes the wall direction (fx,fz) point away from the camera, i.e. screen-up
+  followFor(fx, fz) {
+    const base = rad(PRESETS[this.preset].yaw) + this.yawStep * Math.PI / 2; let best = 0, bd = -9;
+    for (let k = 0; k < 4; k++) { const y = base + k * Math.PI / 2, d = -Math.sin(y) * fx - Math.cos(y) * fz; if (d > bd + 1e-6) { bd = d; best = k; } }
+    let diff = ((best - this.followK) % 4 + 4) % 4; if (diff === 3) diff = -1;   // 0, +1, -1 or 2 (a half turn)
+    return this.followK + diff;
+  }
 
   // screen-space input (ux right, uy up) -> grid axis [dx,dz] relative to the camera
   worldDir(ux, uy) {

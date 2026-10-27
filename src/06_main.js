@@ -141,6 +141,7 @@
     else if (e.key === 'g' || e.key === 'G') applyQuality((state.q + 1) % 3);
     else if (e.key === 'f' || e.key === 'F') $('fps').classList.toggle('hide');
     else if (e.key === 't' || e.key === 'T') setOcc(!occ.on);
+    else if (e.key === 'c' || e.key === 'C') setFollow(!followOn);
     else if (e.key === 'h' || e.key === 'H') $('help').classList.toggle('hide');
   });
   addEventListener('keyup', (e) => { const i = held.indexOf(e.key); if (i >= 0) held.splice(i, 1); });
@@ -166,10 +167,33 @@
   // while clinging: pushing toward the wall climbs, away descends, along it circles. A sideways push keeps its rotational sense
   // for as long as the key is held, so going round a trunk does not flip into climbing at the corners.
   let spinFor = '', spinSense = 0;
+  // climb camera: while clinging, the view turns (in quarter turns) to look straight at the wall, so "up" climbs on every face.
+  // A held direction is latched as a world direction when the view turns, so it keeps its meaning until the key is released.
+  let followOn = true, latch = null, settledT = 0, offT = 0;
+  try { if (localStorage.getItem('shivanag.follow') === '0') followOn = false; } catch (e) { }
+  const followBtn = document.getElementById('follow');
+  function setFollow(on) { followOn = on; followBtn.textContent = 'Climb cam: ' + (on ? 'On' : 'Off'); followBtn.classList.toggle('on', on); try { localStorage.setItem('shivanag.follow', on ? '1' : '0'); } catch (e) { } }
+  followBtn.addEventListener('click', (e) => { setFollow(!followOn); e.target.blur(); });
+  setFollow(followOn);
+  function turnTo(k, v) {
+    if (k === rig.followK) return;
+    if (v) latch = { key: v[0] + ',' + v[1], w: rig.worldDir(v[0], v[1]) };
+    rig.followK = k;
+  }
+  function followUpdate(dt, v) {
+    const cl = snake.climb;
+    settledT = snake.moving || snake.actv ? 0 : settledT + dt;
+    if (spinFor && v) settledT = 0;                                   // going round a trunk: do not chase the corners
+    if (!followOn) { if (rig.followK) turnTo(Math.round(rig.followK / 4) * 4, v); return; }
+    if (cl && !cl.ceil) { offT = 0; if (settledT > .25) turnTo(rig.followFor(cl.fx, cl.fz), v); }
+    else if (!cl) { offT = v ? 0 : offT + dt; if (offT > .8 && rig.followK % 4) turnTo(Math.round(rig.followK / 4) * 4, v); }
+  }
   function wishFor(v) {
-    const rw = rig.worldDir(v[0], v[1]);
-    if (!snake.climb) { spinFor = ''; return rw; }
-    const fx = snake.climb.fx, fz = snake.climb.fz, key = v[0] + ',' + v[1];
+    const key = v[0] + ',' + v[1];
+    if (latch && latch.key !== key) latch = null;
+    const rw = latch ? latch.w : rig.worldDir(v[0], v[1]);
+    if (!snake.climb || snake.climb.ceil) { spinFor = ''; return rw; }   // hanging under a ledge uses the plain ground keys
+    const fx = snake.climb.fx, fz = snake.climb.fz;
     if (spinFor === key && spinSense) return spinSense > 0 ? [-fz, fx] : [fz, -fx];     // already circling: keep going round
     const dot = rw[0] * fx + rw[1] * fz;
     if (dot > 0) { spinFor = ''; return [fx, fz]; }
@@ -247,7 +271,8 @@
   engine.runRenderLoop(() => {
     const dt = Math.min(.05, engine.getDeltaTime() / 1000);
     time += dt;
-    const v = inputVec(); if (!v) spinFor = 0;
+    const v = inputVec(); if (!v) { spinFor = 0; latch = null; }
+    followUpdate(dt, v);
     snake.wish = v && restartT <= 0 ? wishFor(v) : null;
     snake.wishFn = () => { const u = inputVec(); return u && restartT <= 0 ? wishFor(u) : null; };
     const ts = guards.tick(dt, snake);

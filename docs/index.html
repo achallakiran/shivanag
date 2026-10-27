@@ -28,14 +28,14 @@ html,body{margin:0;height:100%;overflow:hidden;background:#2a1d3d;font-family:"T
 <body><canvas id="c" tabindex="0"></canvas>
 <div id="top"><div id="brand">SHIVANAG<small>The Naga's Rescue · look &amp; feel prototype (M0–M2)</small></div></div>
 <div id="fps">-- fps</div>
-<div id="help">Move: WASD / arrows · swipe or drag<br>Rotate view: Q / E<br>Bite: Space · Escape / counter: X<br>Camera: 1 Iso · 2 3/4 · 3 Steep · 4 Dynamic<br>Quality: G · Zoom: wheel · FPS: F · See-through: T · Hide this: H</div>
+<div id="help">Move: WASD / arrows · swipe or drag<br>Rotate view: Q / E<br>Bite: Space · Escape / counter: X<br>Camera: 1 Iso · 2 3/4 · 3 Steep · 4 Dynamic<br>Climb camera: C · Quality: G · Zoom: wheel · FPS: F · See-through: T · Hide this: H</div>
 <div id="joy"><div id="knob"></div></div>
 <div class="bar" id="bar">
   <span id="cams" style="display:contents"><button>Isometric</button><button>3/4 View</button><button>Steep</button><button>Dynamic</button></span>
   <span class="sep"></span>
   <button id="rotL" title="Rotate left (Q)">⟲</button><button id="rotR" title="Rotate right (E)">⟳</button>
   <span class="sep"></span>
-  <button id="see">See-through: Off</button><button id="qual">Quality</button>
+  <button id="follow" title="Turn the camera to face the wall while climbing (C)">Climb cam: On</button><button id="see">See-through: Off</button><button id="qual">Quality</button>
 </div>
 <div id="title"><h1>SHIVANAG</h1><p>A devotee king prays. The naga answers.</p></div>
 
@@ -681,12 +681,13 @@ const SEGS = [
   { k: 's', s: .50, d: 3.46 }, { k: 's', s: .38, d: 3.86 }, { k: 's', s: .26, d: 4.16 },
 ];
 const soft = (m) => m === 0 || m === M.LEAF || m === M.LEAF2;
+const bez3 = (a, v, b, t) => { const w = 1 - t; return { x: w * w * a.x + 2 * w * t * v.x + t * t * b.x, y: w * w * a.y + 2 * w * t * v.y + t * t * b.y, z: w * w * a.z + 2 * w * t * v.z + t * t * b.z }; };   // curved steps (corner wraps, ledge lips)
 class Snake {
   constructor(scene, world, spawnCells, top, bevel) {
     this.scene = scene; this.world = world; this.bevel = bevel || null;
     this.path = spawnCells.map(c => ({ x: c.x + .5, y: top, z: c.z + .5 }));
     this.cell = { x: spawnCells[0].x, z: spawnCells[0].z, top };
-    this.climb = null; this.climbF = 0; this.pitch = 0;
+    this.climb = null; this.climbF = 0; this.ceilF = 0; this.cy = 0; this.pitch = 0; this.blockT = 0;
     this.t = 1; this.dur = 0.2; this.wish = null; this.speedMul = 1; this.actv = null;
     const a = this.path[1], b = this.path[0];
     this.heading = Math.atan2(b.x - a.x, b.z - a.z); this.targetHeading = this.heading;
@@ -781,9 +782,16 @@ class Snake {
   }
 
   _gp(x, z, top) { return { x: x + .5, y: top, z: z + .5 }; }
-  _cp(x, z, h, fx, fz) { return { x: x + .5 + fx * .2, y: h + .2, z: z + .5 + fz * .2 }; }
-  _go(pt, cell, dur) {
-    this.path.unshift(pt); if (this.path.length > 48) this.path.length = 48;
+  _cp(x, z, h, fx, fz) { return { x: x + .5 + fx * .14, y: h + .2, z: z + .5 + fz * .14 }; }   // .14: the body (radius .35) just clears the wall face
+  _ceilP(x, z, h) { return { x: x + .5, y: h + .4, z: z + .5 }; }   // hanging under the block above: the visual pins the body to its underside
+  _go(pt, cell, dur, via) {
+    const o = this.path[0]; this.path.unshift(pt);
+    if (o && o.v) { // a finished curved step keeps its bend in the body trail: add points of the arc between its two ends
+      const a = this.path[2], pts = [.75, .5, .25].map(tt => bez3(a, o.v, o, tt));
+      this.path.splice(2, 0, ...pts); delete o.v;
+    }
+    if (via) pt.v = via;
+    if (this.path.length > 48) this.path.length = 48;
     this.cell = cell; this.t = 0; this.dur = dur / 1.25 / (this.speedMul || 1); return true;
   }
 
@@ -802,6 +810,9 @@ class Snake {
     }
     // ledge: lean over the edge and climb down, if we are standing on a climbable block
     if (soft(w.get(nx, top, nz)) && soft(w.get(nx, top - 1, nz)) && CLIMB.has(w.get(c.x, top - 1, c.z))) {
+      // on a limb or pole the way off the side is deliberate: pushing along it (or off its tip) goes at once, pushing across it needs a held key
+      const sup = w.get(c.x, top - 1, c.z), isL = (m) => m === M.BRANCH || m === M.POLE || m === M.TRUNK;
+      if ((sup === M.BRANCH || sup === M.POLE) && !(isL(w.get(c.x + dx, top - 1, c.z + dz)) || isL(w.get(c.x - dx, top - 1, c.z - dz))) && this.blockT < .25) return false;
       this.climb = { fx: -dx, fz: -dz };
       return this._go(this._cp(nx, nz, top - 1, -dx, -dz), { x: nx, z: nz, top: top - 1 }, .26);
     }
@@ -809,21 +820,26 @@ class Snake {
   }
 
   _stepClimb(dx, dz) {
+    if (this.climb.ceil) return this._stepCeil(dx, dz);
     const w = this.world, c = this.cell, { fx, fz } = this.climb, h = c.top, x = c.x, z = c.z;
-    const dot = dx * fx + dz * fz, D = .26;
+    const dot = dx * fx + dz * fz, D = .25;
     if (dot > 0) { // up the wall
       const above = w.get(x, h + 1, z);
       if (soft(above)) {
         if (CLIMB.has(w.get(x + fx, h + 1, z + fz))) return this._go(this._cp(x, z, h + 1, fx, fz), { x, z, top: h + 1 }, D);
         if (CLIMB.has(w.get(x + fx, h, z + fz)) && soft(w.get(x + fx, h + 1, z + fz))) { // over the top onto the ledge
           this.climb = null; this.targetHeading = Math.atan2(fx, fz);
-          return this._go(this._gp(x + fx, z + fz, h + 1), { x: x + fx, z: z + fz, top: h + 1 }, .3);
+          return this._go(this._gp(x + fx, z + fz, h + 1), { x: x + fx, z: z + fz, top: h + 1 }, .28);
         }
         return false;
       }
-      if (MD[above] && MD[above].walk && w.get(x, h + 2, z) === 0) { // overhang (capital): mount it
+      if (MD[above] && MD[above].walk && soft(w.get(x, h + 2, z))) { // overhang (capital, limb root): mount it
         this.climb = null;
         return this._go(this._gp(x, z, h + 2), { x, z, top: h + 2 }, .3);
+      }
+      if (CLIMB.has(above) && above !== M.BRANCH && above !== M.POLE) { // a ledge overhead that cannot be mounted: hang under it and crawl along its underside
+        this.climb = { fx: -fx, fz: -fz, ceil: true, cy: h + 1 };
+        return this._go(this._ceilP(x, z, h), { x, z, top: h }, .22);
       }
       return false;
     }
@@ -831,7 +847,22 @@ class Snake {
       if (w.walk(x, h - 1, z)) { this.climb = null; return this._go(this._gp(x, z, h), { x, z, top: h }, .22); }
       if (soft(w.get(x, h - 1, z)) && CLIMB.has(w.get(x + fx, h - 1, z + fz))) return this._go(this._cp(x, z, h - 1, fx, fz), { x, z, top: h - 1 }, D);
       // tuck under an overhang (e.g. a capital) onto the narrower shaft below
-      if (w.get(x + fx, h - 1, z + fz) === 0 && CLIMB.has(w.get(x + 2 * fx, h - 1, z + 2 * fz))) return this._go(this._cp(x + fx, z + fz, h - 1, fx, fz), { x: x + fx, z: z + fz, top: h - 1 }, D);
+      if (w.get(x + fx, h - 1, z + fz) === 0) {
+        if (CLIMB.has(w.get(x + 2 * fx, h - 1, z + 2 * fz))) return this._go(this._cp(x + fx, z + fz, h - 1, fx, fz), { x: x + fx, z: z + fz, top: h - 1 }, D);
+        const led = w.get(x + fx, h, z + fz);
+        if (led !== M.BRANCH && led !== M.POLE && led !== M.TRUNK) { // a deep ledge: go down onto its underside
+          this.climb = { fx, fz, ceil: true, cy: h };
+          return this._go(this._ceilP(x + fx, z + fz, h - 1), { x: x + fx, z: z + fz, top: h - 1 }, .3);
+        }
+      }
+      const sup = w.get(x + fx, h, z + fz);
+      if (sup === M.BRANCH || sup === M.POLE || sup === M.TRUNK) { // clinging to a limb with nothing below to climb onto: let go and drop to the ground
+        for (let y = h - 1; y >= 1; y--) {
+          const m = w.get(x, y, z); if (soft(m)) continue;
+          if (w.walk(x, y, z) && soft(w.get(x, y + 1, z)) && h - (y + 1) <= 16) { this.dropTo(x, z, y + 1); return true; }
+          break;
+        }
+      }
       return false;
     }
     // sideways along the wall
@@ -844,8 +875,32 @@ class Snake {
     if (CLIMB.has(w.get(nx + fx, h, nz + fz))) return this._go(this._cp(nx, nz, h, fx, fz), { x: nx, z: nz, top: h }, D);
     // outside corner: wrap around onto the side face
     if (CLIMB.has(w.get(x + fx, h, z + fz)) && soft(w.get(nx + fx, h, nz + fz))) {
+      const a = this._cp(x, z, h, fx, fz), b = this._cp(nx + fx, nz + fz, h, -dx, -dz), R = .52, k = Math.SQRT1_2;
+      const mx = x + .5 + fx * .5 + dx * .5 + (dx - fx) * k * R, mz = z + .5 + fz * .5 + dz * .5 + (dz - fz) * k * R;   // a point of the arc, held clear of the corner
+      const via = { x: 2 * mx - .5 * (a.x + b.x), y: a.y, z: 2 * mz - .5 * (a.z + b.z) };
       this.climb = { fx: -dx, fz: -dz };
-      return this._go(this._cp(nx + fx, nz + fz, h, -dx, -dz), { x: nx + fx, z: nz + fz, top: h }, .3);
+      return this._go(b, { x: nx + fx, z: nz + fz, top: h }, .28, via);
+    }
+    return false;
+  }
+
+  // hanging belly-up under a solid block: crawl on the plane (same keys as on the ground), turn onto a wall at our level, or swing round the ledge's lip
+  _stepCeil(dx, dz) {
+    const w = this.world, x = this.cell.x, z = this.cell.z, h = this.cell.top, nx = x + dx, nz = z + dz;
+    const nm = w.get(nx, h, nz), up = w.get(nx, h + 1, nz);
+    this.climb.fx = dx; this.climb.fz = dz;
+    if (!soft(nm)) {
+      if (!CLIMB.has(nm)) return false;
+      this.climb = { fx: dx, fz: dz };                                   // a wall at our level: cling to it (the way back down)
+      return this._go(this._cp(x, z, h, dx, dz), { x, z, top: h }, .22);
+    }
+    if (!soft(up)) return this._go(this._ceilP(nx, nz, h), { x: nx, z: nz, top: h }, .2);
+    if (CLIMB.has(w.get(x, h + 1, z))) {                                 // the ledge ends here: swing round its lip onto its side face
+      const a = this._ceilP(x, z, h), b = this._cp(nx, nz, h + 1, -dx, -dz), k = Math.SQRT1_2, R = .5;
+      const m = { x: x + .5 + .5 * dx + dx * k * R, y: h + 1 - k * R, z: z + .5 + .5 * dz + dz * k * R };
+      const via = { x: 2 * m.x - .5 * (a.x + b.x), y: 2 * m.y - .5 * (a.y + b.y), z: 2 * m.z - .5 * (a.z + b.z) };
+      this.climb = { fx: -dx, fz: -dz };
+      return this._go(b, { x: nx, z: nz, top: h + 1 }, .34, via);
     }
     return false;
   }
@@ -892,6 +947,7 @@ class Snake {
       if (wi && !locked) { this.tryStep(wi); if (this.t === 0) continue; }
       break;
     }
+    this.blockT = (this.wish && this.t >= 1) ? this.blockT + dt : 0;   // how long a push has been held without moving
     if (this.climb) this.targetHeading = Math.atan2(this.climb.fx, this.climb.fz);
     this.heading += angDiff(this.heading, this.targetHeading) * (1 - Math.exp(-dt * 16));
 
@@ -900,7 +956,9 @@ class Snake {
     this.idle = moving ? 0 : this.idle + dt;
     const liftT = (this.idle > .45 && !this.climb) ? 1 : 0;
     this.lift += (liftT - this.lift) * (1 - Math.exp(-dt * 4.5));
-    this.climbF += ((this.climb ? 1 : 0) - this.climbF) * (1 - Math.exp(-dt * 9));
+    if (this.climb && this.climb.ceil) this.cy = this.climb.cy;
+    this.climbF += ((this.climb && !this.climb.ceil ? 1 : 0) - this.climbF) * (1 - Math.exp(-dt * 9));
+    this.ceilF += ((this.climb && this.climb.ceil ? 1 : 0) - this.ceilF) * (1 - Math.exp(-dt * 9));
     this.phase += dt * (7 * this.mv);
     this.hood += ((moving ? .52 : 1) - this.hood) * (1 - Math.exp(-dt * 7));
 
@@ -914,6 +972,10 @@ class Snake {
     const t = this.t;
     this.head.x = lerp(a.x, b.x, t); this.head.y = lerp(a.y, b.y, t); this.head.z = lerp(a.z, b.z, t);
     const poly = [{ x: this.head.x, y: this.head.y, z: this.head.z }];
+    if (b.v && a !== b) { // a curved step (outside-corner wrap, ledge lip): the head follows a quadratic arc and the body follows the head's trail
+      const h0 = bez3(a, b.v, b, t); this.head.x = h0.x; this.head.y = h0.y; this.head.z = h0.z; poly[0].x = h0.x; poly[0].y = h0.y; poly[0].z = h0.z;
+      const n = 6; for (let i = 0; i < n; i++) poly.push(bez3(a, b.v, b, t * (1 - (i + 1) / (n + 1))));
+    }
     for (let i = 1; i < p.length; i++) poly.push(p[i]);
     const cum = [0];
     for (let i = 1; i < poly.length; i++) cum.push(cum[i - 1] + Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y, poly[i].z - poly[i - 1].z));
@@ -940,9 +1002,10 @@ class Snake {
     const ring = (a, r, i) => { const lat = ((i % 3) - 1) * .3 * (1 - Math.abs(Math.sin(a * .5)) * .3); return [this.head.x + RO.dx * RO.R * Math.sin(a) - RO.dz * lat, this.head.y + r + .12 + RO.R * (1 + Math.cos(a)) * .9, this.head.z + RO.dz * RO.R * Math.sin(a) + RO.dx * lat]; }; // tight ball: loops stacked side by side
     if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
     if (RO) { const q = ring(RO.th, .3, 0); ox = (q[0] - this.head.x) * RO.c; oz = (q[2] - this.head.z) * RO.c; oy = (q[1] - this.head.y - .36 - lift) * RO.c; roll = RO.c * RO.th * .9; hoodK = RO.c * .3; }
-    this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
+    const cF = this.ceilF;
+    this.headNode.position.set(this.head.x + ox, lerp(this.head.y + .36 + lift + oy, this.cy - .38, cF), this.head.z + oz);
     this.headNode.rotation.y = this.heading;
-    this.headNode.rotation.z = roll;
+    this.headNode.rotation.z = roll + Math.PI * cF;
     this.headNode.rotation.x = this.pitch * this.climbF + .18 * this.lift + apitch;
     // impact flash / whoosh puff
     if (A) {
@@ -975,12 +1038,13 @@ class Snake {
       const o = off(s); x += o[0]; z += o[2]; y += o[1];
       if (RO) { const q = ring(RO.th - (i + 1) * 1.15, sg.s / 2, i + 1), cc = RO.c; x = lerp(x, q[0], cc); z = lerp(z, q[2], cc); y = lerp(y + sg.s / 2, q[1], cc) - sg.s / 2; }
       const m = this.seg[i];
-      m.position.set(x, y + r + lf, z);
-      pos.push([x, y + r + lf, z, r]);
+      const yy = cF > .001 ? lerp(y + r + lf, this.cy - r - .02, cF) : y + r + lf;
+      m.position.set(x, yy, z);
+      pos.push([x, yy, z, r]);
     });
     for (const dt_ of this.dots) {
       const q = pos[dt_.segIndex];
-      dt_.position.set(q[0], q[1] + q[3] * .98, q[2]);
+      dt_.position.set(q[0], q[1] + q[3] * .98 * (1 - 2 * cF), q[2]);
       dt_.scaling.set(q[3] * 1.0, q[3] * .5, q[3] * 1.0);
     }
     this._syncGhost();
@@ -1001,7 +1065,7 @@ class CamRig {
     this.cam = new B.FreeCamera('cam', new B.Vector3(0, 20, -20), scene);
     this.cam.minZ = 1; this.cam.maxZ = 400; this.cam.inertia = 0;
     scene.activeCamera = this.cam;
-    this.preset = 1; this.yawStep = 0; this.zoom = 1;
+    this.preset = 1; this.yawStep = 0; this.zoom = 1; this.followK = 0;   // followK: quarter turns added while the snake clings to a wall
     this.cur = null; this.target = new B.Vector3(bounds.W / 2, 2, bounds.D / 2);
     this.first = true; this.shot = null; this.shotW = 0; this.world = null;
   }
@@ -1021,7 +1085,15 @@ class CamRig {
   }
   setPreset(i) { this.preset = ((i % PRESETS.length) + PRESETS.length) % PRESETS.length; }
   rotate(dir) { this.yawStep += dir; }
-  get yawLogical() { return rad(PRESETS[this.preset].yaw) + this.yawStep * Math.PI / 2; }
+  get yawLogical() { return rad(PRESETS[this.preset].yaw) + (this.yawStep + this.followK) * Math.PI / 2; }
+
+  // the follow turn (in quarter turns, nearest to the current one) that makes the wall direction (fx,fz) point away from the camera, i.e. screen-up
+  followFor(fx, fz) {
+    const base = rad(PRESETS[this.preset].yaw) + this.yawStep * Math.PI / 2; let best = 0, bd = -9;
+    for (let k = 0; k < 4; k++) { const y = base + k * Math.PI / 2, d = -Math.sin(y) * fx - Math.cos(y) * fz; if (d > bd + 1e-6) { bd = d; best = k; } }
+    let diff = ((best - this.followK) % 4 + 4) % 4; if (diff === 3) diff = -1;   // 0, +1, -1 or 2 (a half turn)
+    return this.followK + diff;
+  }
 
   // screen-space input (ux right, uy up) -> grid axis [dx,dz] relative to the camera
   worldDir(ux, uy) {
@@ -1832,6 +1904,7 @@ function buildGuards(scene, L) {
     else if (e.key === 'g' || e.key === 'G') applyQuality((state.q + 1) % 3);
     else if (e.key === 'f' || e.key === 'F') $('fps').classList.toggle('hide');
     else if (e.key === 't' || e.key === 'T') setOcc(!occ.on);
+    else if (e.key === 'c' || e.key === 'C') setFollow(!followOn);
     else if (e.key === 'h' || e.key === 'H') $('help').classList.toggle('hide');
   });
   addEventListener('keyup', (e) => { const i = held.indexOf(e.key); if (i >= 0) held.splice(i, 1); });
@@ -1857,10 +1930,33 @@ function buildGuards(scene, L) {
   // while clinging: pushing toward the wall climbs, away descends, along it circles. A sideways push keeps its rotational sense
   // for as long as the key is held, so going round a trunk does not flip into climbing at the corners.
   let spinFor = '', spinSense = 0;
+  // climb camera: while clinging, the view turns (in quarter turns) to look straight at the wall, so "up" climbs on every face.
+  // A held direction is latched as a world direction when the view turns, so it keeps its meaning until the key is released.
+  let followOn = true, latch = null, settledT = 0, offT = 0;
+  try { if (localStorage.getItem('shivanag.follow') === '0') followOn = false; } catch (e) { }
+  const followBtn = document.getElementById('follow');
+  function setFollow(on) { followOn = on; followBtn.textContent = 'Climb cam: ' + (on ? 'On' : 'Off'); followBtn.classList.toggle('on', on); try { localStorage.setItem('shivanag.follow', on ? '1' : '0'); } catch (e) { } }
+  followBtn.addEventListener('click', (e) => { setFollow(!followOn); e.target.blur(); });
+  setFollow(followOn);
+  function turnTo(k, v) {
+    if (k === rig.followK) return;
+    if (v) latch = { key: v[0] + ',' + v[1], w: rig.worldDir(v[0], v[1]) };
+    rig.followK = k;
+  }
+  function followUpdate(dt, v) {
+    const cl = snake.climb;
+    settledT = snake.moving || snake.actv ? 0 : settledT + dt;
+    if (spinFor && v) settledT = 0;                                   // going round a trunk: do not chase the corners
+    if (!followOn) { if (rig.followK) turnTo(Math.round(rig.followK / 4) * 4, v); return; }
+    if (cl && !cl.ceil) { offT = 0; if (settledT > .25) turnTo(rig.followFor(cl.fx, cl.fz), v); }
+    else if (!cl) { offT = v ? 0 : offT + dt; if (offT > .8 && rig.followK % 4) turnTo(Math.round(rig.followK / 4) * 4, v); }
+  }
   function wishFor(v) {
-    const rw = rig.worldDir(v[0], v[1]);
-    if (!snake.climb) { spinFor = ''; return rw; }
-    const fx = snake.climb.fx, fz = snake.climb.fz, key = v[0] + ',' + v[1];
+    const key = v[0] + ',' + v[1];
+    if (latch && latch.key !== key) latch = null;
+    const rw = latch ? latch.w : rig.worldDir(v[0], v[1]);
+    if (!snake.climb || snake.climb.ceil) { spinFor = ''; return rw; }   // hanging under a ledge uses the plain ground keys
+    const fx = snake.climb.fx, fz = snake.climb.fz;
     if (spinFor === key && spinSense) return spinSense > 0 ? [-fz, fx] : [fz, -fx];     // already circling: keep going round
     const dot = rw[0] * fx + rw[1] * fz;
     if (dot > 0) { spinFor = ''; return [fx, fz]; }
@@ -1938,7 +2034,8 @@ function buildGuards(scene, L) {
   engine.runRenderLoop(() => {
     const dt = Math.min(.05, engine.getDeltaTime() / 1000);
     time += dt;
-    const v = inputVec(); if (!v) spinFor = 0;
+    const v = inputVec(); if (!v) { spinFor = 0; latch = null; }
+    followUpdate(dt, v);
     snake.wish = v && restartT <= 0 ? wishFor(v) : null;
     snake.wishFn = () => { const u = inputVec(); return u && restartT <= 0 ? wishFor(u) : null; };
     const ts = guards.tick(dt, snake);
