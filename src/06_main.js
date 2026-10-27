@@ -176,7 +176,7 @@
   hud.innerHTML = '<div id="hearts" style="position:absolute;top:calc(10px + env(safe-area-inset-top));left:50%;transform:translateX(-50%);display:flex;gap:6px;font-size:30px;line-height:1;text-shadow:0 2px 6px rgba(0,0,0,.5)"></div>' +
     '<div id="flash" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(255,240,200,0) 40%,rgba(255,80,60,.55));opacity:0;transition:opacity .35s"></div>' +
     '<div id="barT" style="position:absolute;left:0;right:0;top:0;height:0;background:#000"></div><div id="barB" style="position:absolute;left:0;right:0;bottom:0;height:0;background:#000"></div>' +
-    '<style>@keyframes zz{0%{transform:translate(0,6px) scale(.45) rotate(-8deg);opacity:0}18%{opacity:1}100%{transform:translate(26px,-40px) scale(1.2) rotate(10deg);opacity:0}}.zz{position:relative;width:46px;height:34px;margin:0 auto}.zz i{position:absolute;left:4px;bottom:0;font:italic 900 22px "Trebuchet MS",system-ui;color:#eef5ff;-webkit-text-stroke:1.5px #4a78c8;paint-order:stroke fill;text-shadow:0 0 8px rgba(120,170,255,.9),0 2px 3px rgba(0,0,0,.4);opacity:0;animation:zz 2.1s ease-out infinite}.zz i:nth-child(2){animation-delay:.7s;font-size:17px}.zz i:nth-child(3){animation-delay:1.4s;font-size:13px}</style>' +
+    '<style>@keyframes nw{0%,100%{transform:scale(1)}50%{transform:scale(1.28)}}.nw{width:46px;height:46px;margin:0 auto;border-radius:50%;background:#e5252a;border:3px solid #fff;box-shadow:0 0 18px 6px rgba(255,60,50,.9);animation:nw .28s infinite;display:flex;align-items:center;justify-content:center}.nw b{font:900 30px system-ui;color:#fff}.nt{font:900 13px system-ui;letter-spacing:.08em;color:#fff;background:#e5252a;border-radius:8px;padding:1px 7px;margin-top:3px}@keyframes zz{0%{transform:translate(0,6px) scale(.45) rotate(-8deg);opacity:0}18%{opacity:1}100%{transform:translate(26px,-40px) scale(1.2) rotate(10deg);opacity:0}}.zz{position:relative;width:46px;height:34px;margin:0 auto}.zz i{position:absolute;left:4px;bottom:0;font:italic 900 22px "Trebuchet MS",system-ui;color:#eef5ff;-webkit-text-stroke:1.5px #4a78c8;paint-order:stroke fill;text-shadow:0 0 8px rgba(120,170,255,.9),0 2px 3px rgba(0,0,0,.4);opacity:0;animation:zz 2.1s ease-out infinite}.zz i:nth-child(2){animation-delay:.7s;font-size:17px}.zz i:nth-child(3){animation-delay:1.4s;font-size:13px}</style>' +
     '<div id="slowfx" style="position:absolute;inset:0;background:radial-gradient(circle,rgba(120,180,255,0) 35%,rgba(90,150,255,.45));opacity:0;transition:opacity .3s"></div>' +
     '<div id="combat" style="position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(84px + env(safe-area-inset-bottom));display:flex;flex-direction:column;align-items:center;gap:14px;pointer-events:none">' +
     '<button id="btnA" style="pointer-events:auto;touch-action:none;width:88px;height:88px;border-radius:50%;border:3px solid rgba(255,255,255,.7);background:#c8452b;color:#fff;font:800 15px system-ui;letter-spacing:.04em;box-shadow:0 4px 14px rgba(0,0,0,.4);opacity:.45;transition:opacity .15s,transform .1s">BITE</button>' +
@@ -222,7 +222,7 @@
       if (!show) { b.style.display = 'none'; return; }
       const p = proj(g.pos.x, g.pos.y + 3.9, g.pos.z); if (p[2] > 1 || p[2] < 0) { b.style.display = 'none'; return; }
       b.style.display = 'block'; b.style.left = p[0] + 'px'; b.style.top = p[1] + 'px';
-      const ik = g.state === 'asleep' ? 'z' : g.state === 'alert' ? 'a' : g.state === 'search' || g.state === 'susp' ? 'q' : ''; if (b._k !== ik) { b._k = ik; b.querySelector('.ic').innerHTML = { z: '<div class="zz"><i>Z</i><i>z</i><i>z</i></div>', a: '<span style="color:#ff4b3a">!</span>', q: '<span style="color:#ffc83d">?</span>', '': '' }[ik]; }
+      const ik = g.state === 'asleep' ? 'z' : guards.windowG === g ? 'n' : g.state === 'alert' ? 'a' : g.state === 'search' || g.state === 'susp' ? 'q' : ''; if (b._k !== ik) { b._k = ik; b.querySelector('.ic').innerHTML = { z: '<div class="zz"><i>Z</i><i>z</i><i>z</i></div>', a: '<span style="color:#ff7a3a;font-size:19px">!</span>', n: '<div class="nw"><b>!</b></div><div class="nt">ESCAPE!</div>', q: '<span style="color:#ffc83d">?</span>', '': '' }[ik]; }
       const mt = b.querySelector('.mt'); b.lastChild.style.display = g.state === 'asleep' ? 'none' : 'block'; mt.style.width = Math.round(Math.min(1, g.aw) * 100) + '%'; mt.style.background = g.aw >= 1 ? '#ff4b3a' : '#ffc83d';
     });
   }
@@ -233,7 +233,7 @@
     const dt = Math.min(.05, engine.getDeltaTime() / 1000);
     time += dt;
     const v = inputVec();
-    snake.wish = v ? rig.worldDir(v[0], v[1]) : null;
+    snake.wish = v && restartT <= 0 ? rig.worldDir(v[0], v[1]) : null;
     const ts = guards.tick(dt, snake);
     snake.update(dt * guards.snakeScale, time);
     rig.update(dt, snake.head, snake.moving || !!snake.wish);

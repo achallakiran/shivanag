@@ -1,6 +1,6 @@
 /* Shivanag — guards (M4a): voxel soldiers on fixed patrol routes, deterministic fixed-step movement,
    a 90-degree vision cone cast on the voxel grid (walls and foliage block it, shadows shorten it), drawn on the floor */
-const GCFG = { susp: .3, fill: .75, decay: .3, shout: 16, melee: 2.4, rMin: 2.6, rMax: 11, windup: .85, flight: .45, cool: 1.5, hitR: 1.1, search: 6, lose: 3.2, alertStep: .34, step: .55, wait: 1.0, range: 13, darkRange: 4.5, halfAng: Math.PI * .31, hear: 7, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
+const GCFG = { susp: .25, fill: 1.0, decay: .2, shout: 24, melee: 2.8, rMin: 2.8, rMax: 13, windup: .8, flight: .42, cool: 1.0, hitR: 1.1, search: 14, lose: 6, alertStep: .27, searchStep: .38, biteReach: 4.6, step: .5, wait: .8, range: 14, darkRange: 5.5, halfAng: Math.PI * .33, hear: 9, eye: 3.2, darkBelow: .35, sun: [.5, .8, .35] };
 
 // light value per cell, computed once: sun (blocked by tall things) + lit torches
 function buildLightMap(L) {
@@ -174,7 +174,16 @@ class Guard {
     return !sightBlocked(this.w, ex, ey, ez, snake.head.x, hy + .35, snake.head.z);
   }
 
-  _setState(st) { this.state = st; this.hold = false; this.repath = 0; }
+  _setState(st) { this.state = st; this.hold = false; this.repath = 0; if (st === 'patrol' || st === 'susp') this.stepDur = GCFG.step; else if (st === 'search') this.stepDur = GCFG.searchStep; }
+
+  // pick a few spots around where the snake was last known, to sweep one by one
+  _searchPoints(cx, cz) {
+    const pts = []; for (let i = 0; i < 40 && pts.length < 4; i++) {
+      const a = Math.random() * 6.283, r = 3 + Math.random() * 7, x = Math.floor(cx + Math.cos(a) * r), z = Math.floor(cz + Math.sin(a) * r);
+      if (x > 0 && z > 0 && x < this.L.W - 1 && z < this.L.D - 1 && this._walkable(x, z, 2)) pts.push({ x, z });
+    }
+    return pts;
+  }
 
   _goToward(tx, tz) {
     this.path = this._bfsToward(this.cell, Math.floor(tx), Math.floor(tz));
@@ -213,9 +222,10 @@ class Guard {
     } else {
       this.unseen += dt;
       // noise: a moving snake close by is heard even when not seen (foliage muffles nothing, Wait is silent)
-      if ((this.state === 'patrol' || this.state === 'susp') && (snake.moving || snake.wish) && dist <= GCFG.hear && Math.abs(snake.head.y - this.cell.top) <= 6) {
+      if ((this.state === 'patrol' || this.state === 'susp' || this.state === 'search') && (snake.moving || snake.wish) && dist <= GCFG.hear && Math.abs(snake.head.y - this.cell.top) <= 6) {
         this.aw = Math.min(.99, this.aw + dt * .35 * (1 + (GCFG.hear - dist) / GCFG.hear)); this.last = { x: snake.head.x, z: snake.head.z };
       } else if (this.state === 'patrol' || this.state === 'susp') this.aw = Math.max(0, this.aw - dt * GCFG.decay);
+      if (this.state === 'search' && this.aw >= .99 && this.last) { this._setState('alert'); this.aw = 1; }
     }
     switch (this.state) {
       case 'patrol':
@@ -230,7 +240,9 @@ class Guard {
       case 'alert': this._alert(dt, snake, mgr, seen, dist); break;
       case 'search':
         if (seen && this.aw >= .6) { this._setState('alert'); break; }
-        if (!this.path.length && !this.moving) {
+        if (!this.path.length && !this.moving && this.searchPts && this.searchPts.length) {
+          this.hold = true; this.scan -= dt; if (this.scan <= 0) { const q = this.searchPts.shift(); this._goToward(q.x, q.z); this.scan = .9; this.hold = false; }
+        } else if (!this.path.length && !this.moving) {
           this.timer = 0; this.scan -= dt; this.hold = true;
           if (this.scan <= 0) { this.scan = 1.2; const f = this.face; this.face = [-f[1], f[0]]; this._updateCone(false); }
           this.searchT -= dt;
@@ -260,11 +272,10 @@ class Guard {
         this.hold = false;
         this.repath -= dt;
         if ((this.repath <= 0 || !this.path.length) && this.last) { this._goToward(this.last.x, this.last.z); this.repath = .6; }
-        if (!seen && this.unseen > GCFG.lose) { this._setState('search'); this.stepDur = GCFG.step; this.aw = .5; this.searchT = GCFG.search; this.scan = 1.2; if (this.last) this._goToward(this.last.x, this.last.z); }
+        if (!seen && this.unseen > GCFG.lose) { this._setState('search'); this.aw = .6; this.searchT = GCFG.search; this.scan = .6; this.searchPts = this.last ? this._searchPoints(this.last.x, this.last.z) : []; if (this.last) this._goToward(this.last.x, this.last.z); }
       }
     }
     if (seen === false && !this.atk) { /* keep chasing last known position */ }
-    if (this.state !== 'alert') this.stepDur = GCFG.step;
   }
 
   _attackVis(dt, snake, mgr) {
@@ -320,7 +331,7 @@ class Guard {
     this.cell = { x: this.home[0][0], z: this.home[0][1], top: 2 };
     this.from = { x: this.cell.x + .5, z: this.cell.z + .5, y: 2 }; this.to = this.from; this.t = 1; this.acc = 0;
     this.route = this.home.map(r => r.slice()); this.wp = 0; this.path = []; this.state = 'patrol'; this.aw = 0; this.atk = null; this.cd = 0; this.hold = false;
-    this.stepDur = GCFG.step; this.sees = false; this.timer = 0; this.last = null; this.unseen = 0;
+    this.stepDur = GCFG.step; this.sees = false; this.timer = 0; this.last = null; this.unseen = 0; this.searchPts = null;
     this.spear.setEnabled(false); this.marker.setEnabled(false); this.armR.rotation.x = 0;
     this._nextLeg(); this._updateCone(true);
   }
@@ -367,7 +378,7 @@ function buildGuards(scene, L) {
   guards.push(new Guard(scene, L, light, outer.pts, { color: outer.color }));
   const mgr = {
     list: guards, light, hearts: 3, invuln: 0, lost: 0, events: [], rings: [],
-    timers: [], shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
+    timers: [], windowG: null, shotT: 0, snakeScale: 1, meter: 0, slow: 0, dip: 0, escCd: 0, dashT: 0, window: false, bite: null,
     hitCheck(tx, tz, ty, snake) { return Math.hypot(snake.head.x - tx, snake.head.z - tz) <= GCFG.hitR + .35 && Math.abs(snake.head.y - ty) <= 3 && this.invuln <= 0; },
     damage(g) { if (this.invuln > 0 || this.hearts <= 0) return; this.hearts--; this.invuln = 1.4; this.events.push({ t: 'hit', hearts: this.hearts }); if (this.hearts <= 0) this.events.push({ t: 'lost' }); },
     shout(g) {
@@ -385,7 +396,7 @@ function buildGuards(scene, L) {
       if (this.dashT > 0) { this.dashT -= dt; if (this.dashT <= 0) snake.speedMul = 1; }
       for (let i = this.timers.length - 1; i >= 0; i--) { const q = this.timers[i]; q.t -= dt * this.snakeScale; if (q.t <= 0) { this.timers.splice(i, 1); q.fn(); } }
       this.shotT = Math.max(0, this.shotT - dt); this.snakeScale = this.shotT > 0 ? .3 : 1;
-      this.window = this._slipGuard(snake) !== null;
+      this.windowG = this._slipGuard(snake); this.window = this.windowG !== null;
       this.bite = this._biteTarget(snake);
       return this.shotT > 0 || this.dip > 0 ? .2 : this.slow > 0 ? .3 : this.window ? .45 : 1;
     },
@@ -398,15 +409,16 @@ function buildGuards(scene, L) {
       }
       return null;
     },
+    // auto-aim: the nearest guard within reach that the snake can see (any facing, asleep ones excluded); unaware guards win ties
     _biteTarget(snake) {
       let best = null, bd = 1e9;
       for (const g of guards) {
-        if (g.state === 'alert' || g.state === 'asleep') continue;
-        const dx = snake.head.x - (g.cell.x + .5), dz = snake.head.z - (g.cell.z + .5), d = Math.hypot(dx, dz);
-        if (d > 2.1 || Math.abs(snake.head.y - g.cell.top) > 3) continue;
-        const fl = Math.hypot(g.face[0], g.face[1]) || 1;
-        if ((dx * g.face[0] + dz * g.face[1]) / (fl * (d || 1)) > .35) continue; // not in front of him
-        if (d < bd) { bd = d; best = g; }
+        if (g.state === 'asleep') continue;
+        const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz);
+        if (d > GCFG.biteReach || Math.abs(snake.head.y - g.cell.top) > 3) continue;
+        if (d > 1.8 && sightBlocked(g.w, snake.head.x, snake.head.y + .5, snake.head.z, g.cell.x + .5, g.cell.top + 1.2, g.cell.z + .5)) continue;
+        const score = d + (g.state === 'alert' ? 1.5 : 0);
+        if (score < bd) { bd = score; best = g; }
       }
       return best;
     },
@@ -435,7 +447,7 @@ function buildGuards(scene, L) {
       const g = this._biteTarget(snake);
       if (!g) { const h = snake.heading; snake.act('strike', Math.sin(h), Math.cos(h), 1.6); return false; } // a lunge at thin air, so the button always responds
       const dx = g.cell.x + .5 - snake.head.x, dz = g.cell.z + .5 - snake.head.z, d = Math.hypot(dx, dz);
-      snake.act('strike', dx, dz, Math.max(.8, d - .5)); this.invuln = Math.max(this.invuln, 1.5);
+      snake.act('strike', dx, dz, Math.min(4.2, Math.max(.8, d - .5))); this.invuln = Math.max(this.invuln, 1.5);
       this.startShot(snake, g);
       this.timers.push({ t: .13, fn: () => { if (g.state === 'asleep') return; g.sleep(); this.addMeter(.15); this.events.push({ t: 'bite' }); } });
       return true;

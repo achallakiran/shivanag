@@ -251,11 +251,11 @@ class Snake {
     };
     const RO = A && A.type === 'roll' ? (() => { // curl into a wheel and roll sideways
       const k = A.t / A.dur, c = k < .22 ? Math.pow(k / .22, 2) * (3 - 2 * k / .22) : k > .78 ? Math.pow((1 - k) / .22, 2) * (3 - 2 * (1 - k) / .22) : 1;
-      return { c, th: k * Math.PI * 2.3 * (A.side || 1), dx: A.dx, dz: A.dz, R: .78 };
+      return { c: Math.min(1, c * 1.15), th: k * Math.PI * 2.6 * (A.side || 1), dx: A.dx, dz: A.dz, R: .5 };
     })() : null;
-    const ring = (a, r) => [this.head.x + RO.dx * RO.R * Math.sin(a), this.head.y + r + RO.R * (1 + Math.cos(a)) * .92, this.head.z + RO.dz * RO.R * Math.sin(a)];
+    const ring = (a, r, i) => { const lat = ((i % 3) - 1) * .3 * (1 - Math.abs(Math.sin(a * .5)) * .3); return [this.head.x + RO.dx * RO.R * Math.sin(a) - RO.dz * lat, this.head.y + r + .12 + RO.R * (1 + Math.cos(a)) * .9, this.head.z + RO.dz * RO.R * Math.sin(a) + RO.dx * lat]; }; // tight ball: loops stacked side by side
     if (A) { const k = A.t / A.dur; [ox, oy, oz] = off(0); roll = A.type === 'dodge' ? A.side * .55 * Math.sin(Math.PI * k) : 0; apitch = A.type === 'strike' ? .3 * Math.sin(Math.PI * Math.min(1, k * 1.6)) : 0; hoodK = Math.sin(Math.PI * k); cur = k; }
-    if (RO) { const q = ring(RO.th, .3); ox = (q[0] - this.head.x) * RO.c; oz = (q[2] - this.head.z) * RO.c; oy = (q[1] - this.head.y - .36 - lift) * RO.c; roll = RO.c * RO.th * .9; hoodK = RO.c * .3; }
+    if (RO) { const q = ring(RO.th, .3, 0); ox = (q[0] - this.head.x) * RO.c; oz = (q[2] - this.head.z) * RO.c; oy = (q[1] - this.head.y - .36 - lift) * RO.c; roll = RO.c * RO.th * .9; hoodK = RO.c * .3; }
     this.headNode.position.set(this.head.x + ox, this.head.y + .36 + lift + oy, this.head.z + oz);
     this.headNode.rotation.y = this.heading;
     this.headNode.rotation.z = roll;
@@ -289,7 +289,7 @@ class Snake {
       const r = sg.s / 2;
       const lf = lift * Math.pow(Math.max(0, 1 - s / 2.8), 2);
       const o = off(s); x += o[0]; z += o[2]; y += o[1];
-      if (RO) { const q = ring(RO.th - (i + 1) * .8, sg.s / 2), cc = RO.c; x = lerp(x, q[0], cc); z = lerp(z, q[2], cc); y = lerp(y + sg.s / 2, q[1], cc) - sg.s / 2; }
+      if (RO) { const q = ring(RO.th - (i + 1) * 1.15, sg.s / 2, i + 1), cc = RO.c; x = lerp(x, q[0], cc); z = lerp(z, q[2], cc); y = lerp(y + sg.s / 2, q[1], cc) - sg.s / 2; }
       const m = this.seg[i];
       m.position.set(x, y + r + lf, z);
       pos.push([x, y + r + lf, z, r]);
