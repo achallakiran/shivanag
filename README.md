@@ -4,7 +4,7 @@ A devotee king prays to Shiva; a naga uncoils from the shivalinga and slithers t
 This build covers **M0** (camera rig), **M1** (voxel look), **M2** (the snake) and the first part of **M3** (climbing pillars and walls).
 
 ## Play
-Open `dist/index.html` (or `docs/index.html`) in any modern browser. It is one self-contained file — no network needed.
+Play it on GitHub Pages (served from `index.html` at the repo root on `main`), or open `index.html` (also copied to `docs/index.html` and `dist/index.html`) in any modern browser. It is one self-contained file — no network needed.
 
 | Input | Action |
 |---|---|
